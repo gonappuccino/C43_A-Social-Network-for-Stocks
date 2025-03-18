@@ -21,7 +21,7 @@ try:
 except psycopg2.OperationalError as e:
     print(f"❌ Connection failed: {e}")
 
-def setup_db():
+def setup_db(conn):
     try:
         cursor = conn.cursor()
         for query in setup_queries:
@@ -33,7 +33,21 @@ def setup_db():
 
     except psycopg2.Error as e:
         print(f"❌ Database setup failed: {e}")
+
+@app.route('/register', methods=['POST'])
+def register():
+    print(request.json)
+    username = request.json['username']
+    password = request.json['password']
+    email = request.json['email']
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    # Check if user exists in Users table
+    # Return user_id
+    pass
     
 
 if __name__ == '__main__':
-    setup_db()
+    setup_db(conn)

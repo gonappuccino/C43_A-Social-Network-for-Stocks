@@ -27,6 +27,7 @@ create_stock_lists = '''
         stocklist_id SERIAL PRIMARY KEY,
         user_id INT REFERENCES Users(user_id),
         is_public BOOLEAN DEFAULT FALSE,
+        visibility VARCHAR(20) CHECK (visibility IN ('private', 'public', 'shared')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     '''
