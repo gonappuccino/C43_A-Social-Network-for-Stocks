@@ -154,15 +154,27 @@ class User:
         cursor.close()
         return portfolio_data
 
-    def create_stock_list(self, user_id, is_public=False):
+    def create_stock_list(self, creator_id, is_public=False):
+        """
+        Create a new stock list and add an access row for the owner.
+        """
         cursor = self.conn.cursor()
-        query = '''
-            INSERT INTO StockLists (user_id, is_public)
+        # Insert the new list
+        insert_list_query = '''
+            INSERT INTO StockLists (creator_id, is_public)
             VALUES (%s, %s)
             RETURNING stocklist_id;
         '''
-        cursor.execute(query, (user_id, is_public))
+        cursor.execute(insert_list_query, (creator_id, is_public))
         stocklist_id = cursor.fetchone()[0]
+
+        # Add an access row for the owner
+        insert_access_query = '''
+            INSERT INTO StockListAccess (stocklist_id, user_id, access_role)
+            VALUES (%s, %s, 'owner');
+        '''
+        cursor.execute(insert_access_query, (stocklist_id, creator_id))
+
         self.conn.commit()
         cursor.close()
         return stocklist_id
@@ -424,8 +436,245 @@ class User:
         self.conn.commit()
         cursor.close()
         return result
+    
+    def share_stock_list(self, stocklist_id, owner_id, friend_id):
+        """
+        Share an existing stock list with a friend. Must verify that
+        'owner_id' is indeed the list’s creator or has 'owner' role.
+        """
+        cursor = self.conn.cursor()
+        # Check if the caller actually owns this list or is in owner role
+        check_owner_query = '''
+            SELECT 1
+              FROM StockListAccess
+             WHERE stocklist_id = %s AND user_id = %s AND access_role = 'owner';
+        '''
+        cursor.execute(check_owner_query, (stocklist_id, owner_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None  # Caller is not the owner.
+        
+        # Check if friend_id is actually a friend of owner_id
+        friends = self.view_friends(owner_id)
+        if friend_id not in friends:
+            cursor.close()
+            return None  # Friend is not a friend of the owner.
 
+        # Insert or update an access row for the friend
+        share_query = '''
+            INSERT INTO StockListAccess (stocklist_id, user_id, access_role)
+            VALUES (%s, %s, 'shared')
+            ON CONFLICT (stocklist_id, user_id)
+            DO UPDATE SET access_role = 'shared';
+        '''
+        cursor.execute(share_query, (stocklist_id, friend_id))
 
+        self.conn.commit()
+        cursor.close()
+        return True
+
+    def view_accessible_stock_lists(self, user_id):
+        """
+        Return all stock lists that the user can see:
+          - Lists in StockListAccess where user_id matches
+          - Any StockLists marked is_public = TRUE
+        """
+        cursor = self.conn.cursor()
+        query = '''
+            SELECT DISTINCT sl.stocklist_id,
+                            sl.creator_id,
+                            sl.is_public,
+                            CASE WHEN sla.access_role = 'owner' THEN 'private'
+                                 WHEN sla.access_role = 'shared' THEN 'shared'
+                                 WHEN sl.is_public = TRUE        THEN 'public'
+                            END AS visibility
+              FROM StockLists sl
+              LEFT JOIN StockListAccess sla
+                     ON sl.stocklist_id = sla.stocklist_id
+                    AND sla.user_id = %s
+             WHERE sl.is_public = TRUE
+                OR sla.user_id = %s;
+        '''
+        cursor.execute(query, (user_id, user_id))
+        results = cursor.fetchall()
+        cursor.close()
+        return results
+
+    def create_review(self, user_id, stocklist_id, review_text):
+        """
+        Write a new review for a stock list, if the user does not have one already
+        and has access to the stock list (public or shared/owner). 
+        """
+        cursor = self.conn.cursor()
+
+        # 1) Check if user can access the stock list:
+        #    - If stocklist is public, or
+        #    - If user is in StockListAccess with 'owner' or 'shared', or
+        #    - user_id is the stock list creator (the 'user_id' column in StockLists).
+        access_query = '''
+            SELECT sl.stocklist_id
+              FROM StockLists sl
+              LEFT JOIN StockListAccess sla 
+                     ON sl.stocklist_id = sla.stocklist_id 
+                    AND sla.user_id = %s
+             WHERE sl.stocklist_id = %s
+               AND (sl.is_public = TRUE
+                    OR sl.user_id = %s
+                    OR sla.access_role IN ('owner','shared'));
+        '''
+        cursor.execute(access_query, (user_id, stocklist_id, user_id))
+        can_access = cursor.fetchone()
+        if not can_access:
+            cursor.close()
+            return None  # user has no access
+
+        # 2) Check if the user already has a review for this stock list
+        check_query = '''
+            SELECT review_id 
+              FROM Reviews
+             WHERE user_id = %s AND stocklist_id = %s;
+        '''
+        cursor.execute(check_query, (user_id, stocklist_id))
+        existing = cursor.fetchone()
+        if existing:
+            cursor.close()
+            return None  # user already reviewed this list
+
+        # 3) Insert the new review
+        insert_query = '''
+            INSERT INTO Reviews (user_id, stocklist_id, review_text)
+            VALUES (%s, %s, %s)
+            RETURNING review_id;
+        '''
+        cursor.execute(insert_query, (user_id, stocklist_id, review_text))
+        new_review_id = cursor.fetchone()[0]
+        self.conn.commit()
+        cursor.close()
+        return new_review_id
+
+    def update_review(self, review_id, user_id, new_text):
+        """
+        Edit a review if the user is the author. 
+        """
+        cursor = self.conn.cursor()
+        # 1) Check if user is indeed the author
+        check_query = '''
+            SELECT review_id 
+              FROM Reviews
+             WHERE review_id = %s AND user_id = %s;
+        '''
+        cursor.execute(check_query, (review_id, user_id))
+        existing = cursor.fetchone()
+        if not existing:
+            cursor.close()
+            return None  # not the author, or no such review
+
+        # 2) Update the text
+        update_query = '''
+            UPDATE Reviews
+               SET review_text = %s,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE review_id = %s
+            RETURNING review_id;
+        '''
+        cursor.execute(update_query, (new_text, review_id))
+        updated = cursor.fetchone()
+        self.conn.commit()
+        cursor.close()
+        return updated
+
+    def delete_review(self, review_id, user_id):
+        """
+        Delete the review if the user is the author or the creator of the stock list.
+        """
+        cursor = self.conn.cursor()
+        # 1) Get the user_id of the review's author + the stocklist's creator
+        check_query = '''
+            SELECT r.user_id, sl.user_id AS owner
+              FROM Reviews r
+              JOIN StockLists sl ON r.stocklist_id = sl.stocklist_id
+             WHERE r.review_id = %s
+        '''
+        cursor.execute(check_query, (review_id,))
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            return None  # no such review
+        review_author, list_owner = row
+
+        # 2) Decide if current user is allowed to delete
+        if user_id not in (review_author, list_owner):
+            cursor.close()
+            return None
+
+        # 3) Perform the delete
+        delete_query = '''
+            DELETE FROM Reviews
+             WHERE review_id = %s
+            RETURNING review_id;
+        '''
+        cursor.execute(delete_query, (review_id,))
+        deleted_id = cursor.fetchone()
+        self.conn.commit()
+        cursor.close()
+        return deleted_id
+
+    def view_reviews(self, stocklist_id, user_id):
+        """
+        View all reviews for the specified stock list under the rules:
+          - If the list is public, return all reviews.
+          - If not public, only show reviews authored by `user_id` OR the user is the list owner.
+        """
+        cursor = self.conn.cursor()
+
+        # 1) Check if the list is public and get the list owner
+        check_query = '''
+            SELECT is_public, user_id
+              FROM StockLists
+             WHERE stocklist_id = %s
+        '''
+        cursor.execute(check_query, (stocklist_id,))
+        list_info = cursor.fetchone()
+        if not list_info:
+            cursor.close()
+            return []  # no stock list found
+        is_public, list_owner = list_info
+
+        # 2) If the list is public, the user can see all reviews
+        #    Otherwise, user can see only their own reviews OR if user is the owner
+        if is_public:
+            query = '''
+                SELECT r.review_id,
+                       r.user_id,
+                       r.review_text,
+                       r.created_at,
+                       r.updated_at
+                  FROM Reviews r
+                 WHERE r.stocklist_id = %s
+                 ORDER BY r.created_at ASC;
+            '''
+            cursor.execute(query, (stocklist_id,))
+        else:
+            # not public => user sees only reviews by themself or from the user_id who created the list
+            query = '''
+                SELECT r.review_id,
+                       r.user_id,
+                       r.review_text,
+                       r.created_at,
+                       r.updated_at
+                  FROM Reviews r
+                 WHERE r.stocklist_id = %s
+                   AND (r.user_id = %s OR %s = %s)
+                 ORDER BY r.created_at ASC;
+            '''
+            # The condition "(r.user_id = %s OR %s = %s)" means "r.user_id = user_id OR user_id == list_owner"
+            # We pass user_id, user_id, and list_owner as parameters
+            cursor.execute(query, (stocklist_id, user_id, user_id, list_owner))
+
+        results = cursor.fetchall()
+        cursor.close()
+        return results
 
 
 

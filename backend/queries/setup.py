@@ -12,8 +12,8 @@ create_users = '''
 create_friend_requests = '''
     CREATE TABLE FriendRequest (
         request_id SERIAL PRIMARY KEY,
-        sender_id INT REFERENCES Users(user_id),
-        receiver_id INT REFERENCES Users(user_id),
+        sender_id INT REFERENCES Users(user_id) ON DELETE CASCADE,
+        receiver_id INT REFERENCES Users(user_id) ON DELETE CASCADE,
         status VARCHAR(20) CHECK (status IN ('pending', 'accepted', 'rejected')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -21,14 +21,23 @@ create_friend_requests = '''
     );
     '''
 
-# Combines StockLists and UserLists tables as UserLists itself it redundant
+# Combines StockLists and Created
 create_stock_lists = '''
     CREATE TABLE StockLists (
         stocklist_id SERIAL PRIMARY KEY,
-        user_id INT REFERENCES Users(user_id),
-        is_public BOOLEAN DEFAULT FALSE,
-        visibility VARCHAR(20) CHECK (visibility IN ('private', 'shared')),
+        user_id INT REFERENCES Users(user_id),      -- Owner of this list
+        is_public BOOLEAN DEFAULT FALSE,               -- If True, all users can see it
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    '''
+
+create_stock_list_access = '''
+    CREATE TABLE StockListAccess (
+        access_id SERIAL PRIMARY KEY,
+        stocklist_id INT REFERENCES StockLists(stocklist_id) ON DELETE CASCADE,
+        user_id INT REFERENCES Users(user_id) ON DELETE CASCADE,       -- User who can access this list
+        access_role VARCHAR(20) CHECK (access_role IN ('owner', 'shared')),
+        UNIQUE (stocklist_id, user_id)
     );
     '''
 
@@ -74,10 +83,11 @@ create_reviews = '''
     CREATE TABLE Reviews (
         review_id SERIAL PRIMARY KEY,
         user_id INT REFERENCES Users(user_id),
-        stocklist_id INT REFERENCES StockLists(stocklist_id),
+        stocklist_id INT REFERENCES StockLists(stocklist_id) ON DELETE CASCADE,
         review_text TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, stocklist_id)
     );
     '''
 
@@ -108,6 +118,7 @@ setup_queries = [
     create_users,
     create_friend_requests,
     create_stock_lists,
+    create_stock_list_access,
     create_stock_list_stocks,
     create_portfolios,
     create_portfolio_stocks,
