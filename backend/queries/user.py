@@ -45,6 +45,22 @@ class User:
         self.conn.commit()
         cursor.close()
         return portfolio_id
+    
+    def delete_portfolio(self, portfolio_id):
+        """
+        Delete a portfolio by its ID.
+        """
+        cursor = self.conn.cursor()
+        query = '''
+            DELETE FROM Portfolios
+            WHERE portfolio_id = %s
+            RETURNING portfolio_id;
+        '''
+        cursor.execute(query, (portfolio_id,))
+        deleted_id = cursor.fetchone()
+        self.conn.commit()
+        cursor.close()
+        return deleted_id
 
     def update_cash_balance(self, portfolio_id, amount):
         cursor = self.conn.cursor()
@@ -76,18 +92,54 @@ class User:
         return result
 
     def remove_stock_shares(self, portfolio_id, symbol, num_shares):
+        """
+        Decrease shares without dropping below zero.
+        If resulting shares == 0, remove the record.
+        """
         cursor = self.conn.cursor()
-        query = '''
-            UPDATE PortfolioStocks
-            SET num_shares = num_shares - %s
-            WHERE portfolio_id = %s AND symbol = %s
-            RETURNING portfolio_entry_id, num_shares;
+
+        # Check current shares
+        check_query = '''
+            SELECT num_shares
+              FROM PortfolioStocks
+             WHERE portfolio_id = %s AND symbol = %s
         '''
-        cursor.execute(query, (num_shares, portfolio_id, symbol))
-        result = cursor.fetchone()
-        self.conn.commit()
-        cursor.close()
-        return result
+        cursor.execute(check_query, (portfolio_id, symbol))
+        existing = cursor.fetchone()
+        if not existing:
+            cursor.close()
+            return None  # No record to remove shares from
+
+        current_shares = existing[0]
+        if current_shares < num_shares:
+            # Not allowed to remove more than owned
+            cursor.close()
+            return None
+        elif current_shares == num_shares:
+            # Remove the stock row entirely
+            delete_query = '''
+                DELETE FROM PortfolioStocks
+                 WHERE portfolio_id = %s AND symbol = %s
+                RETURNING portfolio_entry_id;
+            '''
+            cursor.execute(delete_query, (portfolio_id, symbol))
+            result = cursor.fetchone()
+            self.conn.commit()
+            cursor.close()
+            return result
+        else:
+            # Update the row to reflect new share count
+            update_query = '''
+                UPDATE PortfolioStocks
+                   SET num_shares = num_shares - %s
+                 WHERE portfolio_id = %s AND symbol = %s
+                RETURNING portfolio_entry_id, num_shares;
+            '''
+            cursor.execute(update_query, (num_shares, portfolio_id, symbol))
+            result = cursor.fetchone()
+            self.conn.commit()
+            cursor.close()
+            return result
 
     def view_portfolio(self, portfolio_id):
         cursor = self.conn.cursor()
@@ -114,7 +166,23 @@ class User:
         self.conn.commit()
         cursor.close()
         return stocklist_id
-
+    
+    def delete_stock_list(self, stocklist_id):
+        """
+        Delete a stock list by its ID.
+        """
+        cursor = self.conn.cursor()
+        query = '''
+            DELETE FROM StockLists
+            WHERE stocklist_id = %s
+            RETURNING stocklist_id;
+        '''
+        cursor.execute(query, (stocklist_id,))
+        deleted_id = cursor.fetchone()
+        self.conn.commit()
+        cursor.close()
+        return deleted_id
+    
     def add_stock_to_list(self, stocklist_id, symbol, num_shares):
         cursor = self.conn.cursor()
         query = '''
@@ -131,18 +199,51 @@ class User:
         return result
 
     def remove_stock_from_list(self, stocklist_id, symbol, num_shares):
+        """
+        Decrease shares without dropping below zero.
+        If resulting shares == 0, remove the record.
+        """
         cursor = self.conn.cursor()
-        query = '''
-            UPDATE StockListStocks
-            SET num_shares = num_shares - %s
-            WHERE stocklist_id = %s AND symbol = %s
-            RETURNING list_entry_id, num_shares;
+
+        # Check current shares
+        check_query = '''
+            SELECT num_shares
+              FROM StockListStocks
+             WHERE stocklist_id = %s AND symbol = %s
         '''
-        cursor.execute(query, (num_shares, stocklist_id, symbol))
-        result = cursor.fetchone()
-        self.conn.commit()
-        cursor.close()
-        return result
+        cursor.execute(check_query, (stocklist_id, symbol))
+        existing = cursor.fetchone()
+        if not existing:
+            cursor.close()
+            return None
+
+        current_shares = existing[0]
+        if current_shares < num_shares:
+            cursor.close()
+            return None
+        elif current_shares == num_shares:
+            delete_query = '''
+                DELETE FROM StockListStocks
+                 WHERE stocklist_id = %s AND symbol = %s
+                RETURNING list_entry_id;
+            '''
+            cursor.execute(delete_query, (stocklist_id, symbol))
+            result = cursor.fetchone()
+            self.conn.commit()
+            cursor.close()
+            return result
+        else:
+            update_query = '''
+                UPDATE StockListStocks
+                   SET num_shares = num_shares - %s
+                 WHERE stocklist_id = %s AND symbol = %s
+                RETURNING list_entry_id, num_shares;
+            '''
+            cursor.execute(update_query, (num_shares, stocklist_id, symbol))
+            result = cursor.fetchone()
+            self.conn.commit()
+            cursor.close()
+            return result
 
     def view_stock_list(self, stocklist_id):
         cursor = self.conn.cursor()
