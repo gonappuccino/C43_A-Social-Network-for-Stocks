@@ -21,6 +21,7 @@ create_friend_requests = '''
     );
     '''
 
+# Combines StockLists and UserLists tables as UserLists itself it redundant
 create_stock_lists = '''
     CREATE TABLE StockLists (
         stocklist_id SERIAL PRIMARY KEY,
@@ -30,10 +31,10 @@ create_stock_lists = '''
     );
     '''
 
+# Stocks should reference the stock history table
 create_stocks = '''
     CREATE TABLE Stocks (
-        symbol VARCHAR(10) PRIMARY KEY,
-        name VARCHAR(100) NOT NULL
+        symbol VARCHAR(10) REFERENCES StocksHistory(symbol) PRIMARY KEY,
     );
     '''
 
@@ -79,13 +80,43 @@ create_reviews = '''
     );
     '''
 
+create_stock_history = '''CREATE TABLE StocksHistory (
+    timestamp DATE, 
+    open REAL,
+    high REAL, 
+    low REAL, 
+    close REAL, 
+    volume INT, 
+    symbol VARCHAR(5), 
+    PRIMARY KEY(symbol, timestamp)
+    );
+    '''
+
+load_stock_history_from_csv = ''' COPY StocksHistory(timestamp, open, high,
+low, close, volume, symbol) 
+    FROM '/data/SP500History.csv' DELIMITER ','
+CSV HEADER;
+'''
+
+# Now copy symbols from StocksHistory to Stocks
+copy_symbols = '''
+    INSERT INTO Stocks (symbol)
+    SELECT DISTINCT symbol
+    FROM StocksHistory;
+'''
+
 setup_queries = [
     create_users,
     create_friend_requests,
     create_stock_lists,
-    create_stocks,
     create_stock_list_stocks,
     create_portfolios,
     create_portfolio_stocks,
-    create_reviews
+    create_reviews,
+
+    # Set up stock history and stocks table
+    create_stock_history,
+    load_stock_history_from_csv,
+    create_stocks,
+    copy_symbols
 ]
