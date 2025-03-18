@@ -93,10 +93,8 @@ create_stock_history = '''CREATE TABLE StocksHistory (
     );
     '''
 
-load_stock_history_from_csv = ''' COPY StocksHistory(timestamp, open, high,
-low, close, volume, symbol) 
-    FROM '/data/SP500History.csv' DELIMITER ','
-CSV HEADER;
+load_stock_history_from_csv = '''COPY StocksHistory(timestamp, open, high,low, close, volume, symbol) 
+    FROM '/data/SP500History.csv' DELIMITER ',' CSV HEADER;
 '''
 
 # Now copy symbols from StocksHistory to Stocks
