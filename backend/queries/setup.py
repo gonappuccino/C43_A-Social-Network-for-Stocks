@@ -79,6 +79,19 @@ create_portfolio_stocks = '''
     );
 ''' 
 
+create_portfolio_transactions = '''
+    CREATE TABLE PortfolioTransactions (
+        transaction_id SERIAL PRIMARY KEY,
+        portfolio_id INT REFERENCES Portfolios(portfolio_id) ON DELETE CASCADE,
+        symbol VARCHAR(10) REFERENCES Stocks(symbol),
+        transaction_type VARCHAR(4) CHECK (transaction_type IN ('BUY', 'SELL', CASH)),
+        shares INT NOT NULL,
+        price NUMERIC(15,2) NOT NULL,        -- price per share
+        cash_change NUMERIC(15,2) NOT NULL,  -- total cash impact (+ or -)
+        transaction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+'''
+
 create_reviews = '''
     CREATE TABLE Reviews (
         review_id SERIAL PRIMARY KEY,
@@ -122,11 +135,13 @@ setup_queries = [
     create_stock_list_stocks,
     create_portfolios,
     create_portfolio_stocks,
+    create_portfolio_transactions,
     create_reviews,
 
     # Set up stock history and stocks table
     create_stock_history,
     load_stock_history_from_csv,
     create_stocks,
-    copy_symbols
+    copy_symbols,
+    
 ]

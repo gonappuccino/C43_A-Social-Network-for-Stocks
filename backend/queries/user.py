@@ -62,7 +62,22 @@ class User:
         cursor.close()
         return deleted_id
 
-    def update_cash_balance(self, portfolio_id, amount):
+    def update_cash_balance(self, portfolio_id, amount, record_transaction=True):
+
+        # If amount is negative, check if the portfolio has enough cash to withdraw
+        if amount < 0:
+            cursor = self.conn.cursor()
+            query = '''
+                SELECT cash_balance
+                  FROM Portfolios
+                 WHERE portfolio_id = %s
+            '''
+            cursor.execute(query, (portfolio_id,))
+            current_balance = cursor.fetchone()[0]
+            if current_balance + amount < 0:
+                cursor.close()
+                return None
+            
         cursor = self.conn.cursor()
         query = '''
             UPDATE Portfolios
@@ -72,12 +87,48 @@ class User:
         '''
         cursor.execute(query, (amount, portfolio_id))
         updated_balance = cursor.fetchone()[0]
+
+        if not record_transaction:
+            self.conn.commit()
+            cursor.close()
+            return updated_balance
+        
+        # record transaction
+        transaction_query = '''
+            INSERT INTO PortfolioTransactions (portfolio_id, symbol, transaction_type, shares, price, cash_change)
+            VALUES (%s, NULL, 'CASH', 0, 0, %s)
+        '''
+        cursor.execute(transaction_query, (portfolio_id, amount))
+
         self.conn.commit()
         cursor.close()
         return updated_balance
 
-    def add_stock_shares(self, portfolio_id, symbol, num_shares):
+    def buy_stock_shares(self, portfolio_id, symbol, num_shares):
         cursor = self.conn.cursor()
+
+        # Get the latest price per share from StockHistory
+        price_query = '''
+            SELECT close
+              FROM StocksHistory
+             WHERE symbol = %s
+             ORDER BY timestamp DESC
+             LIMIT 1;
+        '''
+        cursor.execute(price_query, (symbol,))
+        price_per_share = cursor.fetchone()[0]
+        if not price_per_share:
+            cursor.close()
+            return None  # No price data available
+        
+        # Calculate the total cost and check if the portfolio has enough cash
+        total_cost = num_shares * price_per_share
+
+        result = self.update_cash_balance(portfolio_id, -total_cost, record_transaction=False)
+        if not result:
+            cursor.close()
+            return None
+
         query = '''
             INSERT INTO PortfolioStocks (portfolio_id, symbol, num_shares)
             VALUES (%s, %s, %s)
@@ -87,11 +138,19 @@ class User:
         '''
         cursor.execute(query, (portfolio_id, symbol, num_shares))
         result = cursor.fetchone()
+
+        # Record the transaction
+        transaction_query = '''
+            INSERT INTO PortfolioTransactions (portfolio_id, symbol, transaction_type, shares, price, cash_change)
+            VALUES (%s, %s, 'BUY', %s, %s, %s)
+        '''
+        cursor.execute(transaction_query, (portfolio_id, symbol, num_shares, price_per_share, -total_cost))
+
         self.conn.commit()
         cursor.close()
         return result
-
-    def remove_stock_shares(self, portfolio_id, symbol, num_shares):
+    
+    def sell_stock_shares(self, portfolio_id, symbol, num_shares, price_per_share):
         """
         Decrease shares without dropping below zero.
         If resulting shares == 0, remove the record.
@@ -124,9 +183,6 @@ class User:
             '''
             cursor.execute(delete_query, (portfolio_id, symbol))
             result = cursor.fetchone()
-            self.conn.commit()
-            cursor.close()
-            return result
         else:
             # Update the row to reflect new share count
             update_query = '''
@@ -137,9 +193,37 @@ class User:
             '''
             cursor.execute(update_query, (num_shares, portfolio_id, symbol))
             result = cursor.fetchone()
-            self.conn.commit()
+
+        # Get the latest price per share from StockHistory
+        price_query = '''
+            SELECT close
+              FROM StocksHistory
+             WHERE symbol = %s
+             ORDER BY timestamp DESC
+             LIMIT 1;
+        '''
+        cursor.execute(price_query, (symbol,))
+        price_per_share = cursor.fetchone()[0]
+        if not price_per_share:
             cursor.close()
-            return result
+            return None  # No price data available
+        
+        # Calculate the total revenue
+        total_revenue = num_shares * price_per_share
+
+        # Update the cash balance
+        self.update_cash_balance(portfolio_id, total_revenue, record_transaction=False)
+
+        # Record the transaction
+        transaction_query = '''
+            INSERT INTO PortfolioTransactions (portfolio_id, symbol, transaction_type, shares, price, cash_change)
+            VALUES (%s, %s, 'SELL', %s, %s, %s)
+        '''
+        cursor.execute(transaction_query, (portfolio_id, symbol, num_shares, price_per_share, total_revenue))
+
+        self.conn.commit()
+        cursor.close()
+        return result
 
     def view_portfolio(self, portfolio_id):
         cursor = self.conn.cursor()
@@ -153,6 +237,53 @@ class User:
         portfolio_data = cursor.fetchall()
         cursor.close()
         return portfolio_data
+
+    def compute_portfolio_value(self, portfolio_id):
+        """
+        Returns the total current market value of the given portfolio, 
+        including its cash balance and the latest stock prices.
+        """
+        cursor = self.conn.cursor()
+
+        # cash balance
+        cash_query = '''
+            SELECT cash_balance
+              FROM Portfolios
+             WHERE portfolio_id = %s
+        '''
+        cursor.execute(cash_query, (portfolio_id,))
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            return 0.0  # Portfolio doesn't exist
+        cash_balance = float(row[0])
+
+        # stock value
+        # latest close stock price for each stock in the portfolio multiplied by num shares
+        # coalesce to 0 if no shares
+        value_query = '''
+            SELECT COALESCE(SUM(ps.num_shares * sh.close), 0)
+              FROM PortfolioStocks ps
+              JOIN (
+                SELECT symbol, MAX(timestamp) AS max_time
+                  FROM StocksHistory
+                 GROUP BY symbol
+              ) AS latest ON ps.symbol = latest.symbol
+              JOIN StocksHistory sh 
+                ON sh.symbol = ps.symbol
+               AND sh.timestamp = latest.max_time
+             WHERE ps.portfolio_id = %s
+        '''
+        cursor.execute(value_query, (portfolio_id,))
+        stock_value = cursor.fetchone()[0]
+        if not stock_value:
+            cursor.close()
+            return cash_balance
+
+        total_value = float(cash_balance) + float(stock_value)
+
+        cursor.close()
+        return total_value
 
     def create_stock_list(self, creator_id, is_public=False):
         """
