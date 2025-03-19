@@ -238,6 +238,22 @@ class User:
         cursor.close()
         return portfolio_data
 
+    def view_portfolio_transactions(self, portfolio_id):
+        """
+        View all transactions for a given portfolio.
+        """
+        cursor = self.conn.cursor()
+        query = '''
+            SELECT transaction_id, portfolio_id, symbol, transaction_type, shares, price, cash_change, transaction_time
+              FROM PortfolioTransactions
+             WHERE portfolio_id = %s
+             ORDER BY transaction_time DESC;
+        '''
+        cursor.execute(query, (portfolio_id,))
+        transactions = cursor.fetchall()
+        cursor.close()
+        return transactions
+
     def compute_portfolio_value(self, portfolio_id):
         """
         Returns the total current market value of the given portfolio, 

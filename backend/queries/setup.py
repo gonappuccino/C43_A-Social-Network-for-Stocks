@@ -84,7 +84,7 @@ create_portfolio_transactions = '''
         transaction_id SERIAL PRIMARY KEY,
         portfolio_id INT REFERENCES Portfolios(portfolio_id) ON DELETE CASCADE,
         symbol VARCHAR(10) REFERENCES Stocks(symbol),
-        transaction_type VARCHAR(4) CHECK (transaction_type IN ('BUY', 'SELL', CASH)),
+        transaction_type VARCHAR(4) CHECK (transaction_type IN ('BUY', 'SELL', 'CASH')),
         shares INT NOT NULL,
         price NUMERIC(15,2) NOT NULL,        -- price per share
         cash_change NUMERIC(15,2) NOT NULL,  -- total cash impact (+ or -)
