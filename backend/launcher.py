@@ -1,10 +1,11 @@
 import psycopg2
 from flask import Flask, request, jsonify
 from queries.user import User
+from queries.setup import setup_queries
 
 app = Flask(__name__)
 
-app.config['POSTGRES_HOST'] = 'localhost'
+app.config['POSTGRES_HOST'] = '34.130.133.233'
 app.config['POSTGRES_DB'] = 'postgres'
 app.config['POSTGRES_USER'] = 'postgres'
 app.config['POSTGRES_PASSWORD'] = '2357'
@@ -59,6 +60,10 @@ def login():
         return jsonify({"user_id": user_id}), 200
     else:
         return jsonify({"message": "Invalid email or password"}), 401
+    
+@app.route('/logout', methods=['POST'])
+def logout():
+    return jsonify({"message": "User logged out"}), 200
 
 @app.route('/create_portfolio', methods=['POST'])
 def create_portfolio():

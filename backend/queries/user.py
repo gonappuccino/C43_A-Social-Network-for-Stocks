@@ -1,10 +1,9 @@
 import psycopg2
-from queries.setup import setup_queries
 from flask import Flask, request
 
 class User:
     conn = psycopg2.connect(
-        host='localhost',
+        host='34.130.133.233',
         database='postgres',
         user='postgres',
         password='2357'
@@ -31,7 +30,7 @@ class User:
         return user_id
     
     def logout(self):
-        pass
+        return True
 
     def create_portfolio(self, user_id, initial_cash=0):
         cursor = self.conn.cursor()

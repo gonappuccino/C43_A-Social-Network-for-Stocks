@@ -127,6 +127,20 @@ copy_symbols = '''
     FROM StocksHistory;
 '''
 
+create_daily_stock_info = '''
+    CREATE TABLE DailyStockInfo (
+        daily_info_id SERIAL PRIMARY KEY,
+        symbol VARCHAR(10) REFERENCES Stocks(symbol),
+        date DATE NOT NULL DEFAULT CURRENT_DATE,
+        open NUMERIC(15,2),
+        high NUMERIC(15,2),
+        low NUMERIC(15,2),
+        close NUMERIC(15,2),
+        volume INT
+    );
+'''
+
+
 setup_queries = [
     create_users,
     create_friend_requests,
@@ -143,5 +157,6 @@ setup_queries = [
     load_stock_history_from_csv,
     create_stocks,
     copy_symbols,
+    create_daily_stock_info,
     
 ]
