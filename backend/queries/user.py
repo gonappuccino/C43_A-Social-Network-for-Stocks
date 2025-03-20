@@ -1,5 +1,7 @@
 import psycopg2
 from flask import Flask, request
+import yfinance as yf
+import datetime
 
 class User:
     conn = psycopg2.connect(
@@ -822,6 +824,42 @@ class User:
         cursor.close()
         return results
 
+    def fetch_and_store_daily_info_yahoo(self, symbol):
+        """
+        Fetch today's stock info for 'symbol' from Yahoo Finance 
+        and insert/update it in the DailyStockInfo table.
+        """
+        ticker = yf.Ticker(symbol)
+        data = ticker.history(period="1d", interval="1d")
+        if data.empty:
+            return None  # No data available
+
+        last_row = data.iloc[-1]
+        open_price = float(last_row["Open"])
+        high_price = float(last_row["High"])
+        low_price = float(last_row["Low"])
+        close_price = float(last_row["Close"])
+        volume = int(last_row["Volume"])
+        today = datetime.date.today()
+
+        cursor = self.conn.cursor()
+        query = '''
+            INSERT INTO DailyStockInfo (symbol, date, open, high, low, close, volume)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (symbol, date) 
+            DO UPDATE SET open = EXCLUDED.open,
+                          high = EXCLUDED.high,
+                          low = EXCLUDED.low,
+                          close = EXCLUDED.close,
+                          volume = EXCLUDED.volume
+            RETURNING daily_info_id;
+        '''
+        cursor.execute(query, (symbol, today, open_price, high_price, low_price, close_price, volume))
+        daily_info_id = cursor.fetchone()[0]
+        self.conn.commit()
+        cursor.close()
+
+        return daily_info_id
 
 
 
