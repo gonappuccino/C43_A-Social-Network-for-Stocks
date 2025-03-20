@@ -861,5 +861,24 @@ class User:
 
         return daily_info_id
 
-
+    def view_stock_info(self, symbol):
+        """
+        Return merged historical data from StocksHistory plus any daily data
+        from DailyStockInfo for the specified symbol, ordered by date descending.
+        """
+        cursor = self.conn.cursor()
+        query = '''
+            SELECT timestamp::date AS record_date, open, high, low, close, volume
+              FROM StocksHistory
+             WHERE symbol = %s
+            UNION ALL
+            SELECT date AS record_date, open, high, low, close, volume
+              FROM DailyStockInfo
+             WHERE symbol = %s
+             ORDER BY record_date DESC;
+        '''
+        cursor.execute(query, (symbol, symbol))
+        data = cursor.fetchall()
+        cursor.close()
+        return data
 
