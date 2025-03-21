@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -24,7 +25,7 @@ export default function Navbar() {
               </Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              {isLoggedIn ? (
+              {isLoggedIn && (
                 <>
                   <Link href="/dashboard" className={`${pathname === '/dashboard' ? 'border-indigo-500 text-gray-900 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 hover:text-gray-700 dark:hover:text-gray-200'} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}>
                     Dashboard
@@ -37,15 +38,6 @@ export default function Navbar() {
                   </Link>
                   <Link href="/friends" className={`${pathname === '/friends' ? 'border-indigo-500 text-gray-900 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 hover:text-gray-700 dark:hover:text-gray-200'} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}>
                     Friends
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <Link href="/about" className={`${pathname === '/about' ? 'border-indigo-500 text-gray-900 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 hover:text-gray-700 dark:hover:text-gray-200'} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}>
-                    About
-                  </Link>
-                  <Link href="/features" className={`${pathname === '/features' ? 'border-indigo-500 text-gray-900 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 hover:text-gray-700 dark:hover:text-gray-200'} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}>
-                    Features
                   </Link>
                 </>
               )}
@@ -93,7 +85,7 @@ export default function Navbar() {
       {isMenuOpen && (
         <div className="sm:hidden">
           <div className="pt-2 pb-3 space-y-1">
-            {isLoggedIn ? (
+            {isLoggedIn && (
               <>
                 <Link href="/dashboard" className={`${pathname === '/dashboard' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-800 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-white'} block pl-3 pr-4 py-2 border-l-4 text-base font-medium`}>
                   Dashboard
@@ -106,15 +98,6 @@ export default function Navbar() {
                 </Link>
                 <Link href="/friends" className={`${pathname === '/friends' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-800 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-white'} block pl-3 pr-4 py-2 border-l-4 text-base font-medium`}>
                   Friends
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link href="/about" className={`${pathname === '/about' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-800 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-white'} block pl-3 pr-4 py-2 border-l-4 text-base font-medium`}>
-                  About
-                </Link>
-                <Link href="/features" className={`${pathname === '/features' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-gray-800 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-white'} block pl-3 pr-4 py-2 border-l-4 text-base font-medium`}>
-                  Features
                 </Link>
               </>
             )}
@@ -144,4 +127,4 @@ export default function Navbar() {
       )}
     </nav>
   );
-} 
+}

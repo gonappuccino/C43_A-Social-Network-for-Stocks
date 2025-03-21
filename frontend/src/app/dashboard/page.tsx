@@ -1,50 +1,248 @@
+
+// filepath: c:\Users\jsdan\OneDrive - University of Toronto\CSCC43\C43_A-Social-Network-for-Stocks\frontend\src\app\dashboard\page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import Navbar from '../../components/Navbar';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
-// Mock data for demonstration
-const mockPortfolios = [
-  { id: 1, name: 'Main Portfolio', value: 25431.78, change: 2.4, stocks: 8, cash: 1520.43 },
-  { id: 2, name: 'Retirement', value: 45128.91, change: -0.7, stocks: 12, cash: 2100.00 },
-  { id: 3, name: 'Tech Stocks', value: 12890.55, change: 5.2, stocks: 5, cash: 500.20 },
-];
+// Define interfaces for our data types
+interface Portfolio {
+  id: number;
+  name: string;
+  value: number;
+  cash: number;
+  stocks: number;
+  change: number;
+}
 
-const mockStockLists = [
-  { id: 1, name: 'Watchlist', stockCount: 12, isPublic: false },
-  { id: 2, name: 'Tech Giants', stockCount: 5, isPublic: true, reviewCount: 8 },
-  { id: 3, name: 'Dividend Stocks', stockCount: 7, isPublic: false, sharedWith: 2 },
-];
+interface StockList {
+  id: number;
+  name: string;
+  isPublic: boolean;
+  stockCount: number;
+  visibility?: string;
+}
 
-const mockActivity = [
-  { id: 1, type: 'purchase', symbol: 'AAPL', shares: 5, price: 189.84, date: '2025-03-20T14:32:00Z' },
-  { id: 2, type: 'sale', symbol: 'MSFT', shares: 3, price: 421.55, date: '2025-03-19T10:15:00Z' },
-  { id: 3, type: 'friend_request', from: 'JaneDoe', status: 'pending', date: '2025-03-18T08:45:00Z' },
-  { id: 4, type: 'review', stockList: 'Tech Giants', from: 'TechInvestor', date: '2025-03-17T16:20:00Z' },
-  { id: 5, type: 'deposit', amount: 1000, portfolio: 'Main Portfolio', date: '2025-03-15T12:00:00Z' },
-];
-
-const mockFriendRequests = [
-  { id: 1, username: 'JaneDoe', date: '2025-03-18T08:45:00Z' },
-  { id: 2, username: 'StockGuru42', date: '2025-03-16T14:20:00Z' },
-];
+interface FriendRequest {
+  id: number;
+  username: string;
+  date: string;
+}
 
 export default function Dashboard() {
-  // We would fetch real data from API in a real application
-  const [portfolios, setPortfolios] = useState(mockPortfolios);
-  const [stockLists, setStockLists] = useState(mockStockLists);
-  const [activity, setActivity] = useState(mockActivity);
-  const [friendRequests, setFriendRequests] = useState(mockFriendRequests);
+  const router = useRouter();
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+  const [stockLists, setStockLists] = useState<StockList[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [showNewPortfolioModal, setShowNewPortfolioModal] = useState(false);
+  const [showNewStockListModal, setShowNewStockListModal] = useState(false);
+  const [newPortfolioName, setNewPortfolioName] = useState('');
+  const [initialCash, setInitialCash] = useState('1000');
+  const [newStockListName, setNewStockListName] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
   
   // Calculate total portfolio value
   const totalPortfolioValue = portfolios.reduce((total, portfolio) => total + portfolio.value, 0);
   
   // Format date for display
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
+  
+  useEffect(() => {
+    // Check if user is logged in
+    const storedUserId = localStorage.getItem('userId');
+    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    
+    if (!storedUserId || !isLoggedIn) {
+      router.push('/auth?type=login');
+      return;
+    }
+    
+    setUserId(storedUserId);
+    
+    // Fetch data from backend
+    fetchUserData(storedUserId);
+  }, [router]);
+  
+  const fetchUserData = async (userId: string) => {
+    setIsLoading(true);
+    
+    try {
+      // Fetch portfolios
+      const portfoliosResponse = await fetch(`http://127.0.0.1:5000/view_portfolio?user_id=${userId}`);
+      const portfoliosData = await portfoliosResponse.json();
+      
+      // Transform portfolio data
+      const transformedPortfolios: Portfolio[] = portfoliosData.map((port: any) => ({
+        id: port.portfolio_id,
+        name: `Portfolio ${port.portfolio_id}`, // You may want to add portfolio names in your backend
+        value: calculatePortfolioValue(port), // This would need a function to sum up holdings value
+        cash: port.cash_balance || 0,
+        stocks: port.stocks ? port.stocks.length : 0,
+        change: 0 // You would calculate this from historical data
+      }));
+      
+      setPortfolios(transformedPortfolios);
+      
+      // Fetch stock lists
+      const stockListsResponse = await fetch(`http://127.0.0.1:5000/view_accessible_stock_lists?user_id=${userId}`);
+      const stockListsData = await stockListsResponse.json();
+      
+      // Transform stock lists data
+      const transformedStockLists: StockList[] = stockListsData.map((list: any) => ({
+        id: list.stocklist_id,
+        name: `Stock List ${list.stocklist_id}`, // You may want to add names in your backend
+        isPublic: list.is_public,
+        stockCount: 0, // You would need to fetch this separately
+        visibility: list.visibility
+      }));
+      
+      setStockLists(transformedStockLists);
+      
+      // Fetch incoming friend requests
+      const friendRequestsResponse = await fetch(`http://127.0.0.1:5000/view_incoming_requests?user_id=${userId}`);
+      const friendRequestsData = await friendRequestsResponse.json();
+      
+      // Transform friend requests data
+      const transformedRequests: FriendRequest[] = friendRequestsData.map((req: any) => ({
+        id: req[0],
+        username: `User ${req[1]}`, // You would need to fetch usernames
+        date: new Date().toISOString() // You might want to add timestamps to requests
+      }));
+      
+      setFriendRequests(transformedRequests);
+      
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const calculatePortfolioValue = (portfolio: any): number => {
+    // In a real app, you would sum up the cash balance and the current market value of stocks
+    return portfolio.cash_balance || 0;
+  };
+  
+  const createNewPortfolio = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:5000/create_portfolio', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          initial_cash: parseFloat(initialCash)
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Refetch portfolios to show the new one
+        if (userId) fetchUserData(userId);
+        setShowNewPortfolioModal(false);
+        setNewPortfolioName('');
+        setInitialCash('1000');
+      }
+    } catch (error) {
+      console.error('Error creating portfolio:', error);
+    }
+  };
+
+  const handleAcceptFriendRequest = async (requestId: number) => {
+    if (!userId) return;
+    
+    try {
+      const response = await fetch('http://127.0.0.1:5000/accept_friend_request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          request_id: requestId
+        }),
+      });
+      
+      if (response.ok) {
+        // Refetch friend requests
+        fetchUserData(userId);
+      }
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+    }
+  };
+
+  const handleRejectFriendRequest = async (requestId: number) => {
+    if (!userId) return;
+    
+    try {
+      const response = await fetch('http://127.0.0.1:5000/reject_friend_request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          request_id: requestId
+        }),
+      });
+      
+      if (response.ok) {
+        // Refetch friend requests
+        fetchUserData(userId);
+      }
+    } catch (error) {
+      console.error('Error rejecting friend request:', error);
+    }
+  };
+
+  // Fix the createNewStockList function
+  const createNewStockList = async () => {
+    if (!userId) return;
+    
+    try {
+      const response = await fetch('http://127.0.0.1:5000/create_stock_list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          creator_id: userId,
+          is_public: isPublic
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Refetch stock lists to show the new one
+        fetchUserData(userId);
+        setShowNewStockListModal(false);
+        setNewStockListName('');
+        setIsPublic(false);
+      }
+    } catch (error) {
+      console.error('Error creating stock list:', error);
+    }
+  };
+
+  
+  if (isLoading) {
+    return (
+      <>
+        <Navbar />
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+          <p className="text-lg text-gray-500 dark:text-gray-400">Loading your dashboard...</p>
+        </div>
+      </>
+    );
+  }
   
   return (
     <>
@@ -91,47 +289,53 @@ export default function Dashboard() {
                 </Link>
               </div>
               <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {portfolios.map((portfolio) => (
-                  <div key={portfolio.id} className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-                    <div className="px-4 py-5 sm:p-6">
-                      <h3 className="text-lg font-medium text-gray-900 dark:text-white">{portfolio.name}</h3>
-                      <div className="mt-3 flex items-end justify-between">
-                        <p className="text-2xl font-semibold text-gray-900 dark:text-white">
-                          ${portfolio.value.toLocaleString()}
-                        </p>
-                        <p className={`${portfolio.change >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} flex items-center text-sm font-medium`}>
-                          <span>
-                            {portfolio.change >= 0 ? '↑' : '↓'} {Math.abs(portfolio.change)}%
-                          </span>
-                        </p>
-                      </div>
-                      <div className="mt-4">
-                        <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400">
-                          <p>{portfolio.stocks} stocks</p>
-                          <p>Cash: ${portfolio.cash.toLocaleString()}</p>
+                {portfolios.length > 0 ? (
+                  portfolios.map((portfolio) => (
+                    <div key={portfolio.id} className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                      <div className="px-4 py-5 sm:p-6">
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white">{portfolio.name}</h3>
+                        <div className="mt-3 flex items-end justify-between">
+                          <p className="text-2xl font-semibold text-gray-900 dark:text-white">
+                            ${portfolio.value.toLocaleString()}
+                          </p>
+                          <p className={`${portfolio.change >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} flex items-center text-sm font-medium`}>
+                            <span>
+                              {portfolio.change >= 0 ? '↑' : '↓'} {Math.abs(portfolio.change)}%
+                            </span>
+                          </p>
+                        </div>
+                        <div className="mt-4">
+                          <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400">
+                            <p>{portfolio.stocks} stocks</p>
+                            <p>Cash: ${portfolio.cash.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="mt-4">
+                          <Link 
+                            href={`/portfolios/${portfolio.id}`}
+                            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                          >
+                            View details →
+                          </Link>
                         </div>
                       </div>
-                      <div className="mt-4">
-                        <Link 
-                          href={`/portfolios/${portfolio.id}`}
-                          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-                        >
-                          View details →
-                        </Link>
-                      </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="col-span-3 text-center py-10">
+                    <p className="text-gray-500 dark:text-gray-400">You don't have any portfolios yet. Create one to get started!</p>
                   </div>
-                ))}
+                )}
                 <div className="bg-gray-50 dark:bg-gray-900 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-6 flex items-center justify-center">
-                  <Link
-                    href="/portfolios/create"
+                  <button
+                    onClick={() => setShowNewPortfolioModal(true)}
                     className="flex items-center justify-center text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
                   >
                     <svg className="h-5 w-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                     Create New Portfolio
-                  </Link>
+                  </button>
                 </div>
               </div>
             </div>
@@ -145,112 +349,47 @@ export default function Dashboard() {
                 </Link>
               </div>
               <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {stockLists.map((list) => (
-                  <div key={list.id} className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
-                    <div className="px-4 py-5 sm:p-6">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white">{list.name}</h3>
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${list.isPublic ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'}`}>
-                          {list.isPublic ? 'Public' : 'Private'}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{list.stockCount} stocks</p>
-                      {list.reviewCount && (
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{list.reviewCount} reviews</p>
-                      )}
-                      {list.sharedWith && (
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Shared with {list.sharedWith} friends</p>
-                      )}
-                      <div className="mt-4">
-                        <Link 
-                          href={`/stocklists/${list.id}`}
-                          className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-                        >
-                          View details →
-                        </Link>
+                {stockLists.length > 0 ? (
+                  stockLists.map((list) => (
+                    <div key={list.id} className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                      <div className="px-4 py-5 sm:p-6">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-medium text-gray-900 dark:text-white">{list.name}</h3>
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${list.isPublic ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'}`}>
+                            {list.isPublic ? 'Public' : 'Private'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{list.stockCount} stocks</p>
+                        {list.visibility === 'shared' && (
+                          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Shared with friends</p>
+                        )}
+                        <div className="mt-4">
+                          <Link 
+                            href={`/stocklists/${list.id}`}
+                            className="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                          >
+                            View details →
+                          </Link>
+                        </div>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="col-span-3 text-center py-10">
+                    <p className="text-gray-500 dark:text-gray-400">You don't have any stock lists yet. Create one to get started!</p>
                   </div>
-                ))}
+                )}
                 <div className="bg-gray-50 dark:bg-gray-900 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-6 flex items-center justify-center">
-                  <Link
-                    href="/stocklists/create"
+                  <button
+                    onClick={() => setShowNewStockListModal(true)}
                     className="flex items-center justify-center text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
                   >
                     <svg className="h-5 w-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                     Create New Stock List
-                  </Link>
+                  </button>
                 </div>
-              </div>
-            </div>
-            
-            {/* Activity section */}
-            <div className="mt-8">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-medium text-gray-900 dark:text-white">Recent Activity</h2>
-              </div>
-              <div className="mt-4 bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-md">
-                <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {activity.map((item) => (
-                    <li key={item.id}>
-                      <div className="px-4 py-4 sm:px-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            {item.type === 'purchase' && (
-                              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                                <svg className="h-5 w-5 text-green-800 dark:text-green-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                                </svg>
-                              </div>
-                            )}
-                            {item.type === 'sale' && (
-                              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
-                                <svg className="h-5 w-5 text-red-800 dark:text-red-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                                </svg>
-                              </div>
-                            )}
-                            {item.type === 'friend_request' && (
-                              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                                <svg className="h-5 w-5 text-blue-800 dark:text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                </svg>
-                              </div>
-                            )}
-                            {item.type === 'review' && (
-                              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                                <svg className="h-5 w-5 text-purple-800 dark:text-purple-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </div>
-                            )}
-                            {item.type === 'deposit' && (
-                              <div className="flex-shrink-0 h-8 w-8 rounded-full bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center">
-                                <svg className="h-5 w-5 text-yellow-800 dark:text-yellow-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                                </svg>
-                              </div>
-                            )}
-                            <div className="ml-4">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                {item.type === 'purchase' && `Purchased ${item.shares} shares of ${item.symbol} at $${item.price}`}
-                                {item.type === 'sale' && `Sold ${item.shares} shares of ${item.symbol} at $${item.price}`}
-                                {item.type === 'friend_request' && `Friend request from ${item.from}`}
-                                {item.type === 'review' && `${item.from} reviewed your "${item.stockList}" list`}
-                                {item.type === 'deposit' && `Deposited $${item.amount} to ${item.portfolio}`}
-                              </p>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">
-                                {formatDate(item.date)}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
               </div>
             </div>
             
@@ -285,10 +424,16 @@ export default function Dashboard() {
                               </div>
                             </div>
                             <div className="flex space-x-2">
-                              <button className="px-4 py-2 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                              <button 
+                                onClick={() => handleAcceptFriendRequest(request.id)}
+                                className="px-4 py-2 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                              >
                                 Accept
                               </button>
-                              <button className="px-4 py-2 text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 dark:text-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600">
+                              <button 
+                                onClick={() => handleRejectFriendRequest(request.id)}
+                                className="px-4 py-2 text-sm font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 dark:text-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+                              >
                                 Decline
                               </button>
                             </div>
@@ -303,6 +448,83 @@ export default function Dashboard() {
           </div>
         </main>
       </div>
+      
+      {/* New Portfolio Modal */}
+      {showNewPortfolioModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Create New Portfolio</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Initial Cash Balance
+                </label>
+                <input
+                  type="number"
+                  value={initialCash}
+                  onChange={(e) => setInitialCash(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                />
+              </div>
+            </div>
+            <div className="mt-5 sm:mt-6 flex space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowNewPortfolioModal(false)}
+                className="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={createNewPortfolio}
+                className="inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* New Stock List Modal */}
+      {showNewStockListModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Create New Stock List</h3>
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="isPublic"
+                  checked={isPublic}
+                  onChange={(e) => setIsPublic(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label htmlFor="isPublic" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                  Make this list public
+                </label>
+              </div>
+            </div>
+            <div className="mt-5 sm:mt-6 flex space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowNewStockListModal(false)}
+                className="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={createNewStockList}
+                className="inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
-} 
+}

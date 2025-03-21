@@ -15,14 +15,6 @@ export default function Home() {
             <p className="mx-auto max-w-[700px] text-gray-500 md:text-xl dark:text-gray-400">
               Track portfolios, analyze stocks, and connect with friends to make better investment decisions.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 mt-8">
-              <Link href="/auth?type=register" className="inline-flex h-10 items-center justify-center rounded-md bg-indigo-600 px-8 text-sm font-medium text-white shadow transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-500">
-                Get Started
-              </Link>
-              <Link href="/features" className="inline-flex h-10 items-center justify-center rounded-md border border-gray-200 bg-white px-8 text-sm font-medium shadow-sm transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-950 dark:border-gray-800 dark:bg-gray-950 dark:hover:bg-gray-800 dark:hover:text-gray-50 dark:focus-visible:ring-gray-300">
-                Learn More
-              </Link>
-            </div>
           </div>
         </section>
 

@@ -2,9 +2,10 @@ import psycopg2
 from flask import Flask, request, jsonify
 from queries.user import User
 from queries.setup import setup_queries
-
+from queries.utils import delete_all_tables
+from flask_cors import CORS
 app = Flask(__name__)
-
+CORS(app)
 app.config['POSTGRES_HOST'] = '34.130.75.185'
 app.config['POSTGRES_DB'] = 'postgres'
 app.config['POSTGRES_USER'] = 'postgres'
@@ -35,6 +36,46 @@ def setup_db(conn):
     except psycopg2.Error as e:
         print(f"❌ Database setup failed: {e}")
 
+def delete_all_tables_fn(conn):
+    try:
+        cursor = conn.cursor()
+        
+        # First terminate all other connections
+        # cursor.execute("""
+        #     SELECT pg_terminate_backend(pg_stat_activity.pid)
+        #     FROM pg_stat_activity
+        #     WHERE pg_stat_activity.datname = current_database()
+        #     AND pid <> pg_backend_pid();
+        # """)
+        
+        # Disable foreign key checks
+        cursor.execute("SET session_replication_role = 'replica';")
+        
+        # Drop tables in a single statement
+        cursor.execute("""
+            DO $$ 
+            DECLARE
+                r RECORD;
+            BEGIN
+                FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                    EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+                    RAISE NOTICE 'Dropped table: %', r.tablename;
+                END LOOP;
+            END $$;
+        """)
+        
+        # Re-enable foreign key checks
+        cursor.execute("SET session_replication_role = 'origin';")
+        
+        conn.commit()
+        cursor.close()
+        print("✅ All tables deleted!")
+        
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"❌ Table deletion failed: {e}")
+
+
 # Instantiate the User class
 user = User()
 
@@ -46,6 +87,7 @@ def register():
     email = data['email']
     success = user.register(username, password, email)
     if success:
+        print("User: ", username, "registered successfully")
         return jsonify({"message": "User registered successfully"}), 201
     else:
         return jsonify({"message": "Username or email already exists"}), 400
@@ -57,6 +99,7 @@ def login():
     password = data['password']
     user_id = user.login(email, password)
     if user_id:
+        print("User: ", email, "logged in successfully")
         return jsonify({"user_id": user_id}), 200
     else:
         return jsonify({"message": "Invalid email or password"}), 401
@@ -304,5 +347,6 @@ def index():
     pass
 
 if __name__ == '__main__':
+    #delete_all_tables_fn(conn)
     setup_db(conn)
     app.run(debug=True)

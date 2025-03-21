@@ -1,6 +1,8 @@
+
+// filepath: c:\Users\jsdan\OneDrive - University of Toronto\CSCC43\C43_A-Social-Network-for-Stocks\frontend\src\app\auth\page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navbar from '../../components/Navbar';
 import Link from 'next/link';
@@ -55,23 +57,41 @@ export default function AuthPage() {
     }
     
     try {
-      // In a real application, you would call the backend API here
-      // const response = await fetch('/api/auth/login', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(formData),
-      // });
+      // Connect to Flask backend
+      const endpoint = authType === 'login' ? 'login' : 'register';
+      const requestBody = authType === 'login' 
+        ? { email: formData.email, password: formData.password }
+        : { username: formData.username, email: formData.email, password: formData.password };
       
-      // For demo purposes, we'll simulate a successful authentication
-      setTimeout(() => {
-        // Redirect to dashboard on success
+      const response = await fetch(`http://127.0.0.1:5000/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Authentication failed');
+      }
+      
+      if (authType === 'login') {
+        // Store user id and any other relevant info in localStorage
+        localStorage.setItem('userId', data.user_id);
+        localStorage.setItem('isLoggedIn', 'true');
+        
+        // Redirect to dashboard on successful login
         router.push('/dashboard');
-        setIsLoading(false);
-      }, 1000);
-    } catch (err) {
-      setError('Authentication failed. Please try again.');
+      } else {
+        // Show success message and redirect to login page
+        alert('Registration successful! Please login.');
+        router.push('/auth?type=login');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed. Please try again.');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -203,4 +223,4 @@ export default function AuthPage() {
       </div>
     </>
   );
-} 
+}
