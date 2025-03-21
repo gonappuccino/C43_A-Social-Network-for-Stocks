@@ -110,11 +110,21 @@ def logout():
 
 @app.route('/create_portfolio', methods=['POST'])
 def create_portfolio():
-    data = request.json
-    user_id = data['user_id']
-    initial_cash = data.get('initial_cash', 0)
-    portfolio_id = user.create_portfolio(user_id, initial_cash)
-    return jsonify({"portfolio_id": portfolio_id}), 201
+    try:
+        data = request.json
+        user_id = int(data['user_id'])  # Ensure integer conversion
+        initial_cash = float(data.get('initial_cash', 0))  # Ensure float conversion
+        
+        print(f"Creating portfolio for user_id: {user_id} with initial cash: {initial_cash}")
+        
+        portfolio_id = user.create_portfolio(user_id, initial_cash)
+        
+        print(f"Portfolio created with ID: {portfolio_id}")
+        return jsonify({"portfolio_id": portfolio_id}), 201
+    except Exception as e:
+        print(f"Error creating portfolio: {str(e)}")
+        return jsonify({"message": f"Error creating portfolio: {str(e)}"}), 400
+
 
 @app.route('/delete_portfolio', methods=['DELETE'])
 def delete_portfolio():
@@ -175,11 +185,21 @@ def view_portfolio_transactions():
 
 @app.route('/create_stock_list', methods=['POST'])
 def create_stock_list():
-    data = request.json
-    creator_id = data['creator_id']
-    is_public = data.get('is_public', False)
-    stocklist_id = user.create_stock_list(creator_id, is_public)
-    return jsonify({"stocklist_id": stocklist_id}), 201
+    try:
+        data = request.json
+        creator_id = int(data['creator_id'])  # Ensure integer conversion
+        is_public = bool(data.get('is_public', False))  # Ensure boolean conversion
+        
+        print(f"Creating stock list for creator_id: {creator_id}, is_public: {is_public}")
+        
+        stocklist_id = user.create_stock_list(creator_id, is_public)
+        
+        print(f"Stock list created with ID: {stocklist_id}")
+        return jsonify({"stocklist_id": stocklist_id}), 201
+    except Exception as e:
+        print(f"Error creating stock list: {str(e)}")
+        return jsonify({"message": f"Error creating stock list: {str(e)}"}), 400
+
 
 @app.route('/delete_stock_list', methods=['DELETE'])
 def delete_stock_list():
@@ -347,6 +367,6 @@ def index():
     pass
 
 if __name__ == '__main__':
-    #delete_all_tables_fn(conn)
+    delete_all_tables_fn(conn)
     setup_db(conn)
     app.run(debug=True)

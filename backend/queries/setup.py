@@ -25,7 +25,7 @@ create_friend_requests = '''
 create_stock_lists = '''
     CREATE TABLE IF NOT EXISTS StockLists (
         stocklist_id SERIAL PRIMARY KEY,
-        user_id INT REFERENCES Users(user_id),      -- Owner of this list
+        creator_id INT REFERENCES Users(user_id),      -- Owner of this list
         is_public BOOLEAN DEFAULT FALSE,               -- If True, all users can see it
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );

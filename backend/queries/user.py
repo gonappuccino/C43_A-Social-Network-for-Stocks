@@ -35,17 +35,25 @@ class User:
         return True
 
     def create_portfolio(self, user_id, initial_cash=0):
-        cursor = self.conn.cursor()
-        query = '''
-            INSERT INTO Portfolios (user_id, cash_balance)
-            VALUES (%s, %s)
-            RETURNING portfolio_id;
-        '''
-        cursor.execute(query, (user_id, initial_cash))
-        portfolio_id = cursor.fetchone()[0]
-        self.conn.commit()
-        cursor.close()
-        return portfolio_id
+        try:
+            user_id = int(user_id)  # Ensure integer conversion
+            initial_cash = float(initial_cash)  # Ensure float conversion
+            
+            cursor = self.conn.cursor()
+            query = '''
+                INSERT INTO Portfolios (user_id, cash_balance)
+                VALUES (%s, %s)
+                RETURNING portfolio_id;
+            '''
+            cursor.execute(query, (user_id, initial_cash))
+            portfolio_id = cursor.fetchone()[0]
+            self.conn.commit()
+            cursor.close()
+            return portfolio_id
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Error in create_portfolio: {e}")
+            raise e
     
     def delete_portfolio(self, portfolio_id):
         """
@@ -303,29 +311,34 @@ class User:
         return total_value
 
     def create_stock_list(self, creator_id, is_public=False):
-        """
-        Create a new stock list and add an access row for the owner.
-        """
-        cursor = self.conn.cursor()
-        # Insert the new list
-        insert_list_query = '''
-            INSERT INTO StockLists (creator_id, is_public)
-            VALUES (%s, %s)
-            RETURNING stocklist_id;
-        '''
-        cursor.execute(insert_list_query, (creator_id, is_public))
-        stocklist_id = cursor.fetchone()[0]
+        try:
+            creator_id = int(creator_id)  # Ensure integer conversion
+            is_public = bool(is_public)  # Ensure boolean conversion
+            
+            cursor = self.conn.cursor()
+            # Insert the new list
+            insert_list_query = '''
+                INSERT INTO StockLists (creator_id, is_public)
+                VALUES (%s, %s)
+                RETURNING stocklist_id;
+            '''
+            cursor.execute(insert_list_query, (creator_id, is_public))
+            stocklist_id = cursor.fetchone()[0]
 
-        # Add an access row for the owner
-        insert_access_query = '''
-            INSERT INTO StockListAccess (stocklist_id, user_id, access_role)
-            VALUES (%s, %s, 'owner');
-        '''
-        cursor.execute(insert_access_query, (stocklist_id, creator_id))
+            # Add an access row for the owner
+            insert_access_query = '''
+                INSERT INTO StockListAccess (stocklist_id, user_id, access_role)
+                VALUES (%s, %s, 'owner');
+            '''
+            cursor.execute(insert_access_query, (stocklist_id, creator_id))
 
-        self.conn.commit()
-        cursor.close()
-        return stocklist_id
+            self.conn.commit()
+            cursor.close()
+            return stocklist_id
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Error in create_stock_list: {e}")
+            raise e
     
     def delete_stock_list(self, stocklist_id):
         """

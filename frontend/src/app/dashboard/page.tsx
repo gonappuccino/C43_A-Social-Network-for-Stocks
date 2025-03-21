@@ -132,25 +132,33 @@ export default function Dashboard() {
   };
   
   const createNewPortfolio = async () => {
+    if (!userId) return;
+    
     try {
+      console.log("Creating portfolio with user_id:", userId, "and cash:", initialCash);
+      
       const response = await fetch('http://127.0.0.1:5000/create_portfolio', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: userId,
+          user_id: parseInt(userId), // Convert to integer
           initial_cash: parseFloat(initialCash)
         }),
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log("Portfolio created:", data);
         // Refetch portfolios to show the new one
-        if (userId) fetchUserData(userId);
+        fetchUserData(userId);
         setShowNewPortfolioModal(false);
         setNewPortfolioName('');
         setInitialCash('1000');
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to create portfolio:", errorData);
       }
     } catch (error) {
       console.error('Error creating portfolio:', error);
@@ -208,24 +216,30 @@ export default function Dashboard() {
     if (!userId) return;
     
     try {
+      console.log("Creating stock list with creator_id:", userId, "and is_public:", isPublic);
+      
       const response = await fetch('http://127.0.0.1:5000/create_stock_list', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          creator_id: userId,
+          creator_id: parseInt(userId), // Convert to integer
           is_public: isPublic
         }),
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log("Stock list created:", data);
         // Refetch stock lists to show the new one
         fetchUserData(userId);
         setShowNewStockListModal(false);
         setNewStockListName('');
         setIsPublic(false);
+      } else {
+        const errorData = await response.json();
+        console.error("Failed to create stock list:", errorData);
       }
     } catch (error) {
       console.error('Error creating stock list:', error);
