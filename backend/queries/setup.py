@@ -1,6 +1,6 @@
 
 create_users = '''
-    CREATE TABLE Users (
+    CREATE TABLE IF NOT EXISTS Users (
         user_id SERIAL PRIMARY KEY,
         username VARCHAR(50) UNIQUE NOT NULL,
         password VARCHAR(100) NOT NULL,
@@ -10,7 +10,7 @@ create_users = '''
     '''
 
 create_friend_requests = '''
-    CREATE TABLE FriendRequest (
+    CREATE TABLE IF NOT EXISTS FriendRequest (
         request_id SERIAL PRIMARY KEY,
         sender_id INT REFERENCES Users(user_id) ON DELETE CASCADE,
         receiver_id INT REFERENCES Users(user_id) ON DELETE CASCADE,
@@ -23,7 +23,7 @@ create_friend_requests = '''
 
 # Combines StockLists and Created
 create_stock_lists = '''
-    CREATE TABLE StockLists (
+    CREATE TABLE IF NOT EXISTS StockLists (
         stocklist_id SERIAL PRIMARY KEY,
         user_id INT REFERENCES Users(user_id),      -- Owner of this list
         is_public BOOLEAN DEFAULT FALSE,               -- If True, all users can see it
@@ -32,7 +32,7 @@ create_stock_lists = '''
     '''
 
 create_stock_list_access = '''
-    CREATE TABLE StockListAccess (
+    CREATE TABLE IF NOT EXISTS StockListAccess (
         access_id SERIAL PRIMARY KEY,
         stocklist_id INT REFERENCES StockLists(stocklist_id) ON DELETE CASCADE,
         user_id INT REFERENCES Users(user_id) ON DELETE CASCADE,       -- User who can access this list
@@ -43,14 +43,14 @@ create_stock_list_access = '''
 
 # Stocks should reference the stock history table
 create_stocks = '''
-    CREATE TABLE Stocks (
-        symbol VARCHAR(10) REFERENCES StocksHistory(symbol) PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS Stocks (
+        symbol VARCHAR(10) PRIMARY KEY
     );
     '''
 
 
 create_stock_list_stocks = '''
-    CREATE TABLE StockListStocks (
+    CREATE TABLE IF NOT EXISTS StockListStocks (
         list_entry_id SERIAL PRIMARY KEY,
         stocklist_id INT REFERENCES StockLists(stocklist_id),
         symbol VARCHAR(10) REFERENCES Stocks(symbol),
@@ -61,7 +61,7 @@ create_stock_list_stocks = '''
 
 # Combines portfolios and user_portfolios tables as portfolios itself it redundant
 create_portfolios = '''
-    CREATE TABLE Portfolios (
+    CREATE TABLE IF NOT EXISTS Portfolios (
         portfolio_id SERIAL PRIMARY KEY,
         user_id INT REFERENCES Users(user_id),
         cash_balance DECIMAL(15,2) DEFAULT 0.00,
@@ -70,7 +70,7 @@ create_portfolios = '''
 '''
 
 create_portfolio_stocks = '''
-    CREATE TABLE PortfolioStocks (
+    CREATE TABLE IF NOT EXISTS PortfolioStocks (
         portfolio_entry_id SERIAL PRIMARY KEY,
         portfolio_id INT REFERENCES Portfolios(portfolio_id),
         symbol VARCHAR(10) REFERENCES Stocks(symbol),
@@ -80,7 +80,7 @@ create_portfolio_stocks = '''
 ''' 
 
 create_portfolio_transactions = '''
-    CREATE TABLE PortfolioTransactions (
+    CREATE TABLE IF NOT EXISTS PortfolioTransactions (
         transaction_id SERIAL PRIMARY KEY,
         portfolio_id INT REFERENCES Portfolios(portfolio_id) ON DELETE CASCADE,
         symbol VARCHAR(10) REFERENCES Stocks(symbol),
@@ -93,7 +93,7 @@ create_portfolio_transactions = '''
 '''
 
 create_reviews = '''
-    CREATE TABLE Reviews (
+    CREATE TABLE IF NOT EXISTS Reviews (
         review_id SERIAL PRIMARY KEY,
         user_id INT REFERENCES Users(user_id),
         stocklist_id INT REFERENCES StockLists(stocklist_id) ON DELETE CASCADE,
@@ -104,7 +104,7 @@ create_reviews = '''
     );
     '''
 
-create_stock_history = '''CREATE TABLE StocksHistory (
+create_stock_history = '''CREATE TABLE IF NOT EXISTS StocksHistory (
     timestamp DATE, 
     open REAL,
     high REAL, 
@@ -128,7 +128,7 @@ copy_symbols = '''
 '''
 
 create_daily_stock_info = '''
-    CREATE TABLE DailyStockInfo (
+    CREATE TABLE IF NOT EXISTS DailyStockInfo (
         daily_info_id SERIAL PRIMARY KEY,
         symbol VARCHAR(10) REFERENCES Stocks(symbol),
         date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -144,6 +144,8 @@ create_daily_stock_info = '''
 setup_queries = [
     create_users,
     create_friend_requests,
+    create_stock_history,
+    create_stocks,
     create_stock_lists,
     create_stock_list_access,
     create_stock_list_stocks,
@@ -153,10 +155,8 @@ setup_queries = [
     create_reviews,
 
     # Set up stock history and stocks table
-    create_stock_history,
-    load_stock_history_from_csv,
-    create_stocks,
-    copy_symbols,
+    #load_stock_history_from_csv,
+    #copy_symbols,
     create_daily_stock_info,
     
 ]
