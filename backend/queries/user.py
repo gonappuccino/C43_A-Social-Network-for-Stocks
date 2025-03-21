@@ -5,7 +5,7 @@ import datetime
 
 class User:
     conn = psycopg2.connect(
-        host='34.130.133.233',
+        host='34.130.75.185',
         database='postgres',
         user='postgres',
         password='2357'

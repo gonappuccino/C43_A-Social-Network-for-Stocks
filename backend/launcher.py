@@ -5,7 +5,7 @@ from queries.setup import setup_queries
 
 app = Flask(__name__)
 
-app.config['POSTGRES_HOST'] = '34.130.133.233'
+app.config['POSTGRES_HOST'] = '34.130.75.185'
 app.config['POSTGRES_DB'] = 'postgres'
 app.config['POSTGRES_USER'] = 'postgres'
 app.config['POSTGRES_PASSWORD'] = '2357'
@@ -297,6 +297,11 @@ def view_reviews():
     user_id = request.args.get('user_id')
     reviews = user.view_reviews(stocklist_id, user_id)
     return jsonify(reviews), 200
+
+@app.route('/')
+def index():
+    # Set up login and registration routes
+    pass
 
 if __name__ == '__main__':
     setup_db(conn)
