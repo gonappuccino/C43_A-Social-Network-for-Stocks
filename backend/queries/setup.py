@@ -25,6 +25,7 @@ create_friend_requests = '''
 create_stock_lists = '''
     CREATE TABLE IF NOT EXISTS StockLists (
         stocklist_id SERIAL PRIMARY KEY,
+        list_name VARCHAR(100) NOT NULL,
         creator_id INT REFERENCES Users(user_id),      -- Owner of this list
         is_public BOOLEAN DEFAULT FALSE,               -- If True, all users can see it
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -63,6 +64,7 @@ create_stock_list_stocks = '''
 create_portfolios = '''
     CREATE TABLE IF NOT EXISTS Portfolios (
         portfolio_id SERIAL PRIMARY KEY,
+        portfolio_name VARCHAR(100) NOT NULL,
         user_id INT REFERENCES Users(user_id),
         cash_balance DECIMAL(15,2) DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -136,7 +138,8 @@ create_daily_stock_info = '''
         high NUMERIC(15,2),
         low NUMERIC(15,2),
         close NUMERIC(15,2),
-        volume INT
+        volume INT,
+        UNIQUE (symbol, date)
     );
 '''
 

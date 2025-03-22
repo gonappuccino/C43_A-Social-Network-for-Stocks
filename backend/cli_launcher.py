@@ -20,11 +20,11 @@ current_user_id = None
 current_username = None
 
 def clear_screen():
-    """Clear the terminal screen."""
+
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def print_header(title):
-    """Print a formatted header."""
+
     clear_screen()
     print("=" * 60)
     print(f"{title:^60}")
@@ -138,7 +138,7 @@ def portfolio_menu():
             portfolios = user.view_user_portfolios(current_user_id)
             if portfolios:
                 # Assuming view_portfolio returns formatted data
-                print(tabulate(portfolios, headers=["Portfolio ID", "Cash Balance", "Total Shares", "Created At"]))
+                print(tabulate(portfolios, headers=["Portfolio ID", "Portfolio Name", "Cash Balance", "Total Shares", "Created At"]))
             else:
                 print("You don't have any portfolios yet.")
             pause()
@@ -146,8 +146,9 @@ def portfolio_menu():
         elif choice == '2':
             # Create new portfolio
             try:
+                portfolio_name = input("Enter portfolio name: ")
                 initial_cash = float(input("Initial cash balance: $"))
-                portfolio_id = user.create_portfolio(current_user_id, initial_cash)
+                portfolio_id = user.create_portfolio(current_user_id, portfolio_name, initial_cash)
                 print(f"\n✅ Portfolio created successfully with ID: {portfolio_id}")
             except ValueError:
                 print("\n❌ Invalid amount. Please enter a valid number.")
@@ -276,19 +277,20 @@ def stocklist_menu():
                 print_header("Your Accessible Stock Lists")
                 formatted_lists = []
                 for sl in stock_lists:
-                    formatted_lists.append([sl[0], sl[1], "Yes" if sl[2] else "No", sl[3]])
-                print(tabulate(formatted_lists, headers=["List ID", "Creator ID", "Public", "Visibility"]))
+                    formatted_lists.append([sl[0], sl[1], sl[2], "Yes" if sl[3] else "No", sl[4]])
+                print(tabulate(formatted_lists, headers=["List ID", "List Name", "Creator ID", "Public", "Visibility"]))
             else:
                 print("You don't have access to any stock lists.")
             pause()
             
         elif choice == '2':
             # Create new stock list
+            stocklist_name = input("Enter stock list name: ")
             is_public_input = input("Make this list public? (y/n): ").lower()
             is_public = is_public_input == 'y'
             
             try:
-                stocklist_id = user.create_stock_list(current_user_id, is_public)
+                stocklist_id = user.create_stock_list(current_user_id, stocklist_name, is_public)
                 print(f"\n✅ Stock list created successfully with ID: {stocklist_id}")
             except Exception as e:
                 print(f"\n❌ Error creating stock list: {e}")
@@ -598,8 +600,7 @@ def setup_db():
         sys.exit(1)
 
 def main():
-    """Main entry point for the CLI app."""
-    # Ensure database is set up
+
     setup_db()
     
     print_header("Welcome to Stock Social Network")

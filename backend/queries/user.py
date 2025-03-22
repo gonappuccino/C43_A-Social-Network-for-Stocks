@@ -35,18 +35,18 @@ class User:
     def logout(self):
         return True
 
-    def create_portfolio(self, user_id, initial_cash=0):
+    def create_portfolio(self, user_id, portfolio_name, initial_cash=0):
         try:
             user_id = int(user_id)  # Ensure integer conversion
             initial_cash = float(initial_cash)  # Ensure float conversion
             
             cursor = self.conn.cursor()
             query = '''
-                INSERT INTO Portfolios (user_id, cash_balance)
-                VALUES (%s, %s)
+                INSERT INTO Portfolios (portfolio_name, user_id, cash_balance)
+                VALUES (%s, %s, %s)
                 RETURNING portfolio_id;
             '''
-            cursor.execute(query, (user_id, initial_cash))
+            cursor.execute(query, (portfolio_name, user_id, initial_cash))
             portfolio_id = cursor.fetchone()[0]
             self.conn.commit()
             cursor.close()
@@ -325,7 +325,7 @@ class User:
         cursor.close()
         return total_value
 
-    def create_stock_list(self, creator_id, is_public=False):
+    def create_stock_list(self, creator_id, list_name, is_public=False):
         try:
             creator_id = int(creator_id)  # Ensure integer conversion
             is_public = bool(is_public)  # Ensure boolean conversion
@@ -333,11 +333,11 @@ class User:
             cursor = self.conn.cursor()
             # Insert the new list
             insert_list_query = '''
-                INSERT INTO StockLists (creator_id, is_public)
-                VALUES (%s, %s)
+                INSERT INTO StockLists (list_name, creator_id, is_public)
+                VALUES (%s, %s, %s)
                 RETURNING stocklist_id;
             '''
-            cursor.execute(insert_list_query, (creator_id, is_public))
+            cursor.execute(insert_list_query, (list_name, creator_id, is_public))
             stocklist_id = cursor.fetchone()[0]
 
             # Add an access row for the owner
@@ -747,6 +747,7 @@ class User:
         cursor = self.conn.cursor()
         query = '''
             SELECT DISTINCT sl.stocklist_id,
+                            sl.list_name,
                             sl.creator_id,
                             sl.is_public,
                             CASE WHEN sla.access_role = 'owner' THEN 'private'
@@ -855,7 +856,7 @@ class User:
         cursor = self.conn.cursor()
         # 1) Get the user_id of the review's author + the stocklist's creator
         check_query = '''
-            SELECT r.user_id, sl.user_id AS owner
+            SELECT r.user_id, sl.creator_id AS owner
               FROM Reviews r
               JOIN StockLists sl ON r.stocklist_id = sl.stocklist_id
              WHERE r.review_id = %s
@@ -945,6 +946,17 @@ class User:
         Fetch today's stock info for 'symbol' from Yahoo Finance 
         and insert/update it in the DailyStockInfo table.
         """
+        cursor = self.conn.cursor()
+        verify_symbol_query = '''
+            SELECT symbol
+            FROM Stocks
+            WHERE symbol = %s;
+        '''
+        cursor.execute(verify_symbol_query, (symbol,))
+        if not cursor.fetchone():
+            cursor.close()
+            return None
+        
         ticker = yf.Ticker(symbol)
         data = ticker.history(period="1d", interval="1d")
         if data.empty:
@@ -958,7 +970,6 @@ class User:
         volume = int(last_row["Volume"])
         today = datetime.date.today()
 
-        cursor = self.conn.cursor()
         query = '''
             INSERT INTO DailyStockInfo (symbol, date, open, high, low, close, volume)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -1004,7 +1015,7 @@ class User:
         """
         cursor = self.conn.cursor()
         query = '''
-            SELECT p.portfolio_id, p.cash_balance, 
+            SELECT p.portfolio_id, p.portfolio_name, p.cash_balance, 
                 COALESCE(SUM(ps.num_shares), 0) AS total_stocks,
                 p.created_at
             FROM Portfolios p
