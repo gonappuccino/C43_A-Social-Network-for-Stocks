@@ -157,7 +157,7 @@ def portfolio_menu():
             # Delete portfolio
             try:
                 portfolio_id = int(input("Enter portfolio ID to delete: "))
-                result = user.delete_portfolio(portfolio_id)
+                result = user.delete_portfolio(portfolio_id, current_user_id)
                 if result:
                     print(f"\n✅ Portfolio {portfolio_id} deleted successfully.")
                 else:
@@ -298,7 +298,7 @@ def stocklist_menu():
             # Delete stock list
             try:
                 stocklist_id = int(input("Enter stock list ID to delete: "))
-                result = user.delete_stock_list(stocklist_id)
+                result = user.delete_stock_list(stocklist_id, current_user_id)
                 if result:
                     print(f"\n✅ Stock list {stocklist_id} deleted successfully.")
                 else:
@@ -452,9 +452,18 @@ def friends_menu():
                 receiver_id = int(input("Enter user ID to send friend request: "))
                 result = user.send_friend_request(current_user_id, receiver_id)
                 if result:
-                    print(f"\n✅ Friend request sent successfully to user {receiver_id}.")
+                    if result > 0:
+                        print(f"\n✅ Friend request sent successfully to user {receiver_id}.")
+                    elif result == -1: # Already friends or pending request
+                        print("\n❌ You are already friends or have a pending request with this user.")
+                    elif result == -2: # Less than 5 minutes since last request
+                        print("\n❌ You can only send one request every 5 minutes.")
+                    elif result == -3: # Request to self
+                        print("\n❌ You can't send a friend request to yourself.")
+                    else:
+                        print("\n❌ Failed to send friend request. Check if the user exists.")
                 else:
-                    print("\n❌ Failed to send friend request. You may already have a pending request or be friends.")
+                    print("\n❌ Failed to send friend request. Check if the user exists.")
             except ValueError:
                 print("\n❌ Invalid user ID. Please enter a valid number.")
             pause()
