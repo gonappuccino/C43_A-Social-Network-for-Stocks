@@ -55,18 +55,32 @@ class User:
             self.conn.rollback()
             print(f"Error in create_portfolio: {e}")
             raise e
-    
-    def delete_portfolio(self, portfolio_id):
+    def delete_portfolio(self, portfolio_id, user_id):
         """
-        Delete a portfolio by its ID.
+        Delete a portfolio by its ID, but only if the specified user is the owner.
         """
         cursor = self.conn.cursor()
-        query = '''
+        
+        # First check if the user owns this portfolio
+        check_query = '''
+            SELECT portfolio_id 
+            FROM Portfolios 
+            WHERE portfolio_id = %s AND user_id = %s
+        '''
+        cursor.execute(check_query, (portfolio_id, user_id))
+        is_owner = cursor.fetchone()
+        
+        if not is_owner:
+            cursor.close()
+            return None  # User is not the owner
+        
+        # Proceed with deletion
+        delete_query = '''
             DELETE FROM Portfolios
             WHERE portfolio_id = %s
             RETURNING portfolio_id;
         '''
-        cursor.execute(query, (portfolio_id,))
+        cursor.execute(delete_query, (portfolio_id,))
         deleted_id = cursor.fetchone()
         self.conn.commit()
         cursor.close()
@@ -341,17 +355,34 @@ class User:
             print(f"Error in create_stock_list: {e}")
             raise e
     
-    def delete_stock_list(self, stocklist_id):
+    def delete_stock_list(self, stocklist_id, user_id):
         """
-        Delete a stock list by its ID.
+        Delete a stock list by its ID, but only if the specified user is the owner.
         """
         cursor = self.conn.cursor()
-        query = '''
+        
+        # Check if the user is the creator or has 'owner' role
+        check_owner_query = '''
+            SELECT 1
+            FROM StockLists sl
+            LEFT JOIN StockListAccess sla ON sl.stocklist_id = sla.stocklist_id
+            WHERE sl.stocklist_id = %s
+            AND (sl.creator_id = %s OR (sla.user_id = %s AND sla.access_role = 'owner'))
+        '''
+        cursor.execute(check_owner_query, (stocklist_id, user_id, user_id))
+        is_owner = cursor.fetchone()
+        
+        if not is_owner:
+            cursor.close()
+            return None  # User is not the owner
+        
+        # Proceed with deletion
+        delete_query = '''
             DELETE FROM StockLists
             WHERE stocklist_id = %s
             RETURNING stocklist_id;
         '''
-        cursor.execute(query, (stocklist_id,))
+        cursor.execute(delete_query, (stocklist_id,))
         deleted_id = cursor.fetchone()
         self.conn.commit()
         cursor.close()
@@ -443,6 +474,9 @@ class User:
         Insert a new friend request if it does not exist, or if the previous
         one was rejected more than 5 minutes ago. Otherwise do nothing.
         """
+
+        if sender_id == receiver_id:
+            return -3
         cursor = self.conn.cursor()
         # Check if there's an existing request
         check_query = '''
@@ -459,7 +493,7 @@ class User:
             # If pending or accepted, do nothing (already friends or pending)
             if status in ('pending', 'accepted'):
                 cursor.close()
-                return None
+                return -1 # Error code for already pending/accepted
             # If rejected, allow re-send after 5 minutes
             else: 
                 time_check_query = '''
@@ -482,7 +516,7 @@ class User:
                     return updated_id
                 else:
                     cursor.close()
-                    return None
+                    return -2 # Error code for too soon to re-send
         else:
             # Insert a new friend request
             insert_query = '''
@@ -587,19 +621,44 @@ class User:
         """
         If two users are friends, update the row to 'rejected' so a new request
         can be sent later, following the same 5-minute rule.
+        
+        Also removes access to all non-public stock lists that were shared between them.
         """
         cursor = self.conn.cursor()
+        # First update the friendship status
         query = '''
             UPDATE FriendRequest
-               SET status = 'rejected',
-                   updated_at = CURRENT_TIMESTAMP
-             WHERE ((sender_id = %s AND receiver_id = %s)
+            SET status = 'rejected',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE ((sender_id = %s AND receiver_id = %s)
                 OR  (sender_id = %s AND receiver_id = %s))
-               AND status = 'accepted'
+            AND status = 'accepted'
             RETURNING request_id;
         '''
         cursor.execute(query, (user_id, friend_id, friend_id, user_id))
         result = cursor.fetchone()
+        
+        if result:
+            # Remove stock lists shared by user_id to friend_id
+            remove_shared_access_query = '''
+                DELETE FROM StockListAccess
+                WHERE stocklist_id IN (
+                    SELECT sla1.stocklist_id
+                    FROM StockListAccess sla1
+                    JOIN StockListAccess sla2 ON sla1.stocklist_id = sla2.stocklist_id
+                    JOIN StockLists sl ON sla1.stocklist_id = sl.stocklist_id
+                    WHERE sla1.user_id = %s AND sla1.access_role = 'owner'
+                    AND sla2.user_id = %s AND sla2.access_role = 'shared'
+                    AND sl.is_public = FALSE
+                )
+                AND user_id = %s
+                AND access_role = 'shared'
+            '''
+            cursor.execute(remove_shared_access_query, (user_id, friend_id, friend_id))
+            
+            # Also remove stock lists shared by friend_id to user_id (in case friend is also an owner)
+            cursor.execute(remove_shared_access_query, (friend_id, user_id, user_id))
+        
         self.conn.commit()
         cursor.close()
         return result
@@ -640,6 +699,44 @@ class User:
         self.conn.commit()
         cursor.close()
         return True
+
+    def unshare_stock_list(self, stocklist_id, owner_id, friend_id):
+        """
+        Remove access to a stock list for a specific friend.
+        Must verify that 'owner_id' is indeed the list's creator or has 'owner' role.
+        
+        Returns:
+        - True: If unsharing was successful
+        - None: If owner_id is not the owner or friend_id had no access
+        """
+        cursor = self.conn.cursor()
+        # Check if the caller actually owns this list
+        check_owner_query = '''
+            SELECT 1
+            FROM StockListAccess
+            WHERE stocklist_id = %s AND user_id = %s AND access_role = 'owner';
+        '''
+        cursor.execute(check_owner_query, (stocklist_id, owner_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None  # Caller is not the owner
+        
+        # Remove the friend's access
+        delete_access_query = '''
+            DELETE FROM StockListAccess
+            WHERE stocklist_id = %s AND user_id = %s AND access_role = 'shared'
+            RETURNING stocklist_id;
+        '''
+        cursor.execute(delete_access_query, (stocklist_id, friend_id))
+        result = cursor.fetchone()
+        
+        self.conn.commit()
+        cursor.close()
+        return result is not None
+
+
+
 
     def view_accessible_stock_lists(self, user_id):
         """
