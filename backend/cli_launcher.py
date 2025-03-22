@@ -20,11 +20,9 @@ current_user_id = None
 current_username = None
 
 def clear_screen():
-
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def print_header(title):
-
     clear_screen()
     print("=" * 60)
     print(f"{title:^60}")
@@ -32,11 +30,9 @@ def print_header(title):
     print()
 
 def pause():
-    """Wait for user to press Enter before continuing."""
     input("\nPress Enter to continue...")
 
 def login_menu():
-    """Display login/register menu and handle authentication."""
     global current_user_id, current_username
     
     while True:
@@ -603,8 +599,8 @@ def main():
 
     setup_db()
     
-    print_header("Welcome to Stock Social Network")
-    print("A command-line social network for stock investors")
+    print_header("Welcome to Stock Social Network - A CSCC43 Project")
+    print("A command-line social network application for stock investors")
     
     while True:
         # If not logged in, show login menu
