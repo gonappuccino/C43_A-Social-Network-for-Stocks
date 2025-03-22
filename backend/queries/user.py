@@ -3,6 +3,7 @@ from flask import Flask, request
 import yfinance as yf
 import datetime
 
+from queries.utils import decimal_to_float as d2f
 class User:
     conn = psycopg2.connect(
         host='34.130.75.185',
@@ -82,7 +83,7 @@ class User:
                  WHERE portfolio_id = %s
             '''
             cursor.execute(query, (portfolio_id,))
-            current_balance = cursor.fetchone()[0]
+            current_balance = d2f(cursor.fetchone()[0])
             if current_balance + amount < 0:
                 cursor.close()
                 return None
@@ -125,7 +126,7 @@ class User:
              LIMIT 1;
         '''
         cursor.execute(price_query, (symbol,))
-        price_per_share = cursor.fetchone()[0]
+        price_per_share = d2f(cursor.fetchone()[0])
         if not price_per_share:
             cursor.close()
             return None  # No price data available
@@ -178,7 +179,7 @@ class User:
             cursor.close()
             return None  # No record to remove shares from
 
-        current_shares = existing[0]
+        current_shares = d2f(existing[0])
         if current_shares < num_shares:
             # Not allowed to remove more than owned
             cursor.close()
@@ -300,7 +301,7 @@ class User:
              WHERE ps.portfolio_id = %s
         '''
         cursor.execute(value_query, (portfolio_id,))
-        stock_value = cursor.fetchone()[0]
+        stock_value = d2f(cursor.fetchone()[0])
         if not stock_value:
             cursor.close()
             return cash_balance
@@ -419,9 +420,13 @@ class User:
             return result
 
     def view_stock_list(self, stocklist_id):
+        """
+        Return all stocks in the specified list, including the creator's ID.
+        
+        """
         cursor = self.conn.cursor()
         query = '''
-            SELECT sl.stocklist_id, sl.is_public, sl.user_id,
+            SELECT sl.stocklist_id, sl.is_public, sl.creator_id,
                    sls.symbol, sls.num_shares
             FROM StockLists sl
             LEFT JOIN StockListStocks sls
@@ -444,8 +449,9 @@ class User:
             SELECT request_id, status, updated_at
               FROM FriendRequest
              WHERE (sender_id = %s AND receiver_id = %s)
+             OR   (sender_id = %s AND receiver_id = %s);
         '''
-        cursor.execute(check_query, (sender_id, receiver_id))
+        cursor.execute(check_query, (sender_id, receiver_id, receiver_id, sender_id))
         existing = cursor.fetchone()
 
         if existing:
@@ -681,7 +687,7 @@ class User:
                     AND sla.user_id = %s
              WHERE sl.stocklist_id = %s
                AND (sl.is_public = TRUE
-                    OR sl.user_id = %s
+                    OR sl.creator_id = %s
                     OR sla.access_role IN ('owner','shared'));
         '''
         cursor.execute(access_query, (user_id, stocklist_id, user_id))
@@ -791,7 +797,7 @@ class User:
 
         # 1) Check if the list is public and get the list owner
         check_query = '''
-            SELECT is_public, user_id
+            SELECT is_public, creator_id
               FROM StockLists
              WHERE stocklist_id = %s
         '''
@@ -894,4 +900,51 @@ class User:
         data = cursor.fetchall()
         cursor.close()
         return data
+
+    def view_user_portfolios(self, user_id):
+        """
+        Return all portfolios owned by the specified user.
+        """
+        cursor = self.conn.cursor()
+        query = '''
+            SELECT p.portfolio_id, p.cash_balance, 
+                COALESCE(SUM(ps.num_shares), 0) AS total_stocks,
+                p.created_at
+            FROM Portfolios p
+            LEFT JOIN PortfolioStocks ps ON p.portfolio_id = ps.portfolio_id
+            WHERE p.user_id = %s
+            GROUP BY p.portfolio_id, p.cash_balance, p.created_at
+            ORDER BY p.created_at DESC;
+        '''
+        cursor.execute(query, (user_id,))
+        portfolios = cursor.fetchall()
+        cursor.close()
+        return portfolios
+
+    def view_user_owned_stock_lists(self, user_id):
+        """
+        Return all stock lists owned by the specified user (not just accessible).
+        This includes lists where the user is the creator or has 'owner' access role.
+        """
+        cursor = self.conn.cursor()
+        query = '''
+            SELECT DISTINCT sl.stocklist_id, 
+                            sl.creator_id, 
+                            sl.is_public,
+                            sl.created_at,
+                            COUNT(sls.symbol) AS stock_count
+            FROM StockLists sl
+            LEFT JOIN StockListAccess sla ON sl.stocklist_id = sla.stocklist_id
+            LEFT JOIN StockListStocks sls ON sl.stocklist_id = sls.stocklist_id
+            WHERE sl.creator_id = %s 
+            OR (sla.user_id = %s AND sla.access_role = 'owner')
+            GROUP BY sl.stocklist_id, sl.creator_id, sl.is_public, sl.created_at
+            ORDER BY sl.created_at DESC;
+        '''
+        cursor.execute(query, (user_id, user_id))
+        stock_lists = cursor.fetchall()
+        cursor.close()
+        return stock_lists
+    
+    
 

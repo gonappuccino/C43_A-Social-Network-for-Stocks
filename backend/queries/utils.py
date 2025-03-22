@@ -1,4 +1,4 @@
-
+import decimal
 delete_all_tables = '''
     DO $$ DECLARE
         r RECORD;
@@ -9,3 +9,11 @@ delete_all_tables = '''
     END $$;
     '''
 
+
+def decimal_to_float(value):
+    """Convert Decimal or numeric types to float safely."""
+    if value is None:
+        return None
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    return value
