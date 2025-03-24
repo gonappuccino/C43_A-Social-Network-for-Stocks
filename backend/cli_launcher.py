@@ -555,33 +555,55 @@ def stock_info_menu():
     while True:
         print_header("Stock Information")
         print("1. View Stock Info")
-        print("2. Fetch Latest Stock Info (Yahoo Finance)")
-        print("3. Return to Main Menu")
+        print("2. Fetch Latest Stock Info For an Individual Stock (Yahoo Finance)")
+        print("3. Fetch Latest Stock Info For All Stocks (Yahoo Finance)")
+        print("4. Return to Main Menu")
         
         choice = input("\nEnter your choice (1-3): ")
         
         if choice == '1':
             # View stock info
             symbol = input("Enter stock symbol: ").upper()
-            data = user.view_stock_info(symbol)
+            period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ")
+            # verify period
+            if period not in ['5d', '1mo', '6mo', '1y', '5y', 'all']:
+                print("\n❌ Invalid period. Please enter a valid period.")
+                pause()
+                continue
+            graph = input("Do you want to see a graph of the stock? (y/n): ")
+            data = user.view_stock_info(symbol, period)
             if data:
                 print_header(f"Stock Information for {symbol}")
                 print(tabulate(data, headers=["Date", "Open", "High", "Low", "Close", "Volume"]))
             else:
                 print(f"\nNo stock information found for {symbol}.")
+
+            if graph.lower() == 'y':
+                user.display_stock_chart(symbol, period)
             pause()
             
         elif choice == '2':
             # Fetch latest stock info
             symbol = input("Enter stock symbol: ").upper()
-            result = user.fetch_and_store_daily_info_yahoo(symbol)
+            num_days = int(input("Enter number of days to fetch (1-365): "))
+            result = user.fetch_and_store_daily_info_yahoo(symbol, num_days)
             if result:
-                print(f"\n✅ Successfully fetched and stored latest information for {symbol}.")
+                print(f"\n✅ Successfully fetched and stored {num_days} days of data for {symbol}.")
             else:
                 print(f"\n❌ Failed to fetch information for {symbol}. Make sure it's a valid symbol.")
             pause()
-            
+
         elif choice == '3':
+            # Fetch latest stock info for all stocks
+            num_days = int(input("Enter number of days to fetch (1-365): "))
+            result = user.fetch_and_store_all_stocks_daily_info(num_days)
+            if result:
+                print(f"\n✅ Successfully fetched and stored {num_days} days of data for all stocks.")
+            else:
+                print(f"\n❌ Failed to fetch information for all stocks.")
+            pause()
+            
+        elif choice == '4':
             return
             
         else:

@@ -3,8 +3,12 @@ from flask import Flask, request
 import yfinance as yf
 import datetime
 import time
+import matplotlib.pyplot as plt
+import mplfinance as mpf
+import pandas as pd
 
 from queries.utils import decimal_to_float as d2f
+
 class User:
     conn = psycopg2.connect(
         host='34.130.75.185',
@@ -169,7 +173,7 @@ class User:
             cursor.close()
             return None
 
-        # Get the latest price per share from StockHistory
+        # Get the latest price per share from StockHistory 
         price_query = '''
             SELECT close
               FROM StocksHistory
@@ -1060,7 +1064,7 @@ class User:
             num_days: Number of days to fetch (default: 1)
             
         Returns:
-            List of daily_info_ids that were inserted/updated, or None if no data
+            Number of days inserted/updated, or None if no data
         """
         cursor = self.conn.cursor()
         
@@ -1077,7 +1081,7 @@ class User:
         
         # Get the most recent date from DailyStockInfo
         recent_date_query = '''
-            SELECT MAX(date) 
+            SELECT MAX(timestamp) 
             FROM DailyStockInfo
             WHERE symbol = %s;
         '''
@@ -1087,7 +1091,7 @@ class User:
         # If no data in DailyStockInfo, get most recent date from StocksHistory
         if not latest_date:
             history_date_query = '''
-                SELECT MAX(timestamp::date) 
+                SELECT MAX(timestamp) 
                 FROM StocksHistory
                 WHERE symbol = %s;
             '''
@@ -1108,26 +1112,23 @@ class User:
         today = datetime.date.today()
         if start_date > today:
             cursor.close()
-            return []  # Already up to date
+            return 0  # Already up to date
         
         # Fetch data from Yahoo Finance
         ticker = yf.Ticker(symbol)
         
-        # Determine period based on num_days
-        if num_days == 1:
-            period = "1d"
-        else:
-            # For multiple days, use a date range
-            period = f"{min(num_days, (today - start_date).days + 1)}d"
+        # Determine end date based on number of days to fetch
+        end_date = start_date + datetime.timedelta(days=num_days)
+        end_date_str = end_date.strftime('%Y-%m-%d')
         
-        data = ticker.history(start=start_date_str, period=period)
+        data = ticker.history(start=start_date_str, end=end_date_str)
         
         if data.empty:
             cursor.close()
-            return []  # No new data available
+            return 0  # No new data available
         
         # Insert all fetched days
-        inserted_ids = []
+        inserted_count = 0
         for index, row in data.iterrows():
             # Convert index to date object
             date = index.date() if hasattr(index, 'date') else index.to_pydatetime().date()
@@ -1143,23 +1144,21 @@ class User:
             volume = int(row["Volume"])
             
             query = '''
-                INSERT INTO DailyStockInfo (symbol, date, open, high, low, close, volume)
+                INSERT INTO DailyStockInfo (symbol, timestamp, open, high, low, close, volume)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (symbol, date) 
+                ON CONFLICT (symbol, timestamp) 
                 DO UPDATE SET open = EXCLUDED.open,
                             high = EXCLUDED.high,
                             low = EXCLUDED.low,
                             close = EXCLUDED.close,
                             volume = EXCLUDED.volume
-                RETURNING daily_info_id;
             '''
             cursor.execute(query, (symbol, date, open_price, high_price, low_price, close_price, volume))
-            daily_info_id = cursor.fetchone()[0]
-            inserted_ids.append(daily_info_id)
+            inserted_count += 1
         
         self.conn.commit()
         cursor.close()
-        return inserted_ids
+        return inserted_count
 
     def fetch_and_store_all_stocks_daily_info(self, num_days=1):
         """
@@ -1169,7 +1168,7 @@ class User:
             num_days: Number of days to fetch for each stock (default: 1)
             
         Returns:
-            Dictionary mapping symbols to lists of inserted daily_info_ids
+            Dictionary mapping symbols to number of days inserted/updated
         """
         cursor = self.conn.cursor()
         
@@ -1187,39 +1186,127 @@ class User:
                 # Add a small delay to avoid rate limiting
                 time.sleep(0.5)
                 print(f"Fetching data for {symbol}...")
-                inserted_ids = self.fetch_and_store_daily_info_yahoo(symbol, num_days)
-                if inserted_ids:
-                    results[symbol] = inserted_ids
-                    print(f"✅ Successfully updated {len(inserted_ids)} days for {symbol}")
+                inserted_count = self.fetch_and_store_daily_info_yahoo(symbol, num_days)
+                if inserted_count:
+                    results[symbol] = inserted_count
+                    print(f"✅ Successfully updated {inserted_count} days for {symbol}")
                 else:
-                    results[symbol] = []
+                    results[symbol] = 0
                     print(f"ℹ️ No new data available for {symbol}")
             except Exception as e:
                 print(f"❌ Error fetching data for {symbol}: {e}")
                 results[symbol] = None
+        
         return results
 
 
-    def view_stock_info(self, symbol):
+
+    def view_stock_info(self, symbol, period='all', graph=False):
         """
         Return merged historical data from StocksHistory plus any daily data
         from DailyStockInfo for the specified symbol, ordered by date descending.
+        
+        Args:
+            symbol: The stock symbol to query
+            period: Time period to filter data ('5d', '1mo', '6mo', '1y', '5y', 'all')
         """
         cursor = self.conn.cursor()
-        query = '''
-            SELECT timestamp::date AS record_date, open, high, low, close, volume
-              FROM StocksHistory
-             WHERE symbol = %s
-            UNION ALL
-            SELECT date AS record_date, open, high, low, close, volume
-              FROM DailyStockInfo
-             WHERE symbol = %s
-             ORDER BY record_date DESC;
+        
+        # Calculate the start date based on period
+                # Get the most recent date from DailyStockInfo
+        recent_date_query = '''
+            SELECT MAX(timestamp) 
+            FROM DailyStockInfo
+            WHERE symbol = %s;
         '''
-        cursor.execute(query, (symbol, symbol))
+        cursor.execute(recent_date_query, (symbol,))
+        latest_date = cursor.fetchone()[0]
+        
+        # If no data in DailyStockInfo, get most recent date from StocksHistory
+        if not latest_date:
+            history_date_query = '''
+                SELECT MAX(timestamp) 
+                FROM StocksHistory
+                WHERE symbol = %s;
+            '''
+            cursor.execute(history_date_query, (symbol,))
+            latest_date = cursor.fetchone()[0]
+
+        if period == '5d':
+            start_date = latest_date - datetime.timedelta(days=5)
+        elif period == '1mo':
+            start_date = latest_date - datetime.timedelta(days=30)
+        elif period == '6mo':
+            start_date = latest_date - datetime.timedelta(days=180)
+        elif period == '1y':
+            start_date = latest_date - datetime.timedelta(days=365)
+        elif period == '5y':
+            start_date = latest_date - datetime.timedelta(days=5*365)
+        elif period == 'all':
+            start_date = datetime.date(1900, 1, 1)
+        else:
+            cursor.close()
+            return None
+        
+        query = '''
+            SELECT timestamp, open, high, low, close, volume
+            FROM StocksHistory
+            WHERE symbol = %s AND timestamp >= %s
+            UNION ALL
+            SELECT timestamp, open, high, low, close, volume
+            FROM DailyStockInfo
+            WHERE symbol = %s AND timestamp >= %s
+            ORDER BY timestamp ASC;
+        '''
+        cursor.execute(query, (symbol, start_date, symbol, start_date))
         data = cursor.fetchall()
         cursor.close()
         return data
+
+    def display_stock_chart(self, symbol, period='all'):
+        """
+        Display a candlestick chart for the given stock symbol.
+        
+        Args:
+            symbol: The stock symbol to chart
+            period: Time period to display ('5d', '1mo', '6mo', '1y', '5y', 'all')
+        """
+        
+        # Get stock data
+        stock_data = self.view_stock_info(symbol, period)
+        
+        if not stock_data:
+            print(f"No data available for {symbol}")
+            return
+        
+        # Convert to pandas DataFrame
+        df = pd.DataFrame(stock_data, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
+        df['Date'] = pd.to_datetime(df['Date'])
+        df.set_index('Date', inplace=True)
+        
+        # Get period name for title
+        period_names = {
+            '5d': '5 Days', 
+            '1mo': '1 Month', 
+            '6mo': '6 Months', 
+            '1y': '1 Year', 
+            '5y': '5 Years', 
+            'all': 'All Time'
+        }
+        period_name = period_names.get(period, 'Custom Period')
+        
+        mpf.plot(
+            df,
+            type='candle',
+            title=f'{symbol} - {period_name}',
+            ylabel='Price',
+            volume=True,
+            style='yahoo',
+            figsize=(12, 8)
+        )
+
+        return df  
+
 
     def view_user_portfolios(self, user_id):
         """

@@ -120,6 +120,19 @@ create_stock_history = '''CREATE TABLE IF NOT EXISTS StocksHistory (
     );
     '''
 
+create_daily_stock_info = '''
+    CREATE TABLE IF NOT EXISTS DailyStockInfo (
+        timestamp DATE,
+        open REAL,
+        high REAL,
+        low REAL,
+        close REAL,
+        volume INT,
+        symbol VARCHAR(5) REFERENCES Stocks(symbol),
+        PRIMARY KEY (symbol, timestamp)
+    );
+'''
+
 load_stock_history_from_csv = '''COPY StocksHistory(timestamp, open, high,low, close, volume, symbol) 
     FROM 'data/pg17/data/sp500history.csv' DELIMITER ',' CSV HEADER;
 '''
@@ -239,19 +252,6 @@ copy_symbols = '''
     ON CONFLICT (symbol) DO NOTHING;
 '''
 
-create_daily_stock_info = '''
-    CREATE TABLE IF NOT EXISTS DailyStockInfo (
-        daily_info_id SERIAL PRIMARY KEY,
-        symbol VARCHAR(10) REFERENCES Stocks(symbol),
-        date DATE NOT NULL DEFAULT CURRENT_DATE,
-        open NUMERIC(15,2),
-        high NUMERIC(15,2),
-        low NUMERIC(15,2),
-        close NUMERIC(15,2),
-        volume INT,
-        UNIQUE (symbol, date)
-    );
-'''
 
 
 setup_queries = [
