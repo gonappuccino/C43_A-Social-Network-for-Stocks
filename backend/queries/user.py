@@ -2,6 +2,7 @@ import psycopg2
 from flask import Flask, request
 import yfinance as yf
 import datetime
+import time
 
 from queries.utils import decimal_to_float as d2f
 class User:
@@ -86,11 +87,22 @@ class User:
         cursor.close()
         return deleted_id
 
-    def update_cash_balance(self, portfolio_id, amount, record_transaction=True):
+    def update_cash_balance(self, user_id, portfolio_id, amount, record_transaction=True):
+        cursor = self.conn.cursor()
+        is_owner_query = '''
+            SELECT 1
+                FROM Portfolios
+                WHERE portfolio_id = %s AND user_id = %s
+        '''
+        # Above query also checks if the portfolio exists
+        cursor.execute(is_owner_query, (portfolio_id, user_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None
 
         # If amount is negative, check if the portfolio has enough cash to withdraw
         if amount < 0:
-            cursor = self.conn.cursor()
             query = '''
                 SELECT cash_balance
                   FROM Portfolios
@@ -102,7 +114,6 @@ class User:
                 cursor.close()
                 return None
             
-        cursor = self.conn.cursor()
         query = '''
             UPDATE Portfolios
             SET cash_balance = cash_balance + %s
@@ -127,9 +138,36 @@ class User:
         self.conn.commit()
         cursor.close()
         return updated_balance
-
-    def buy_stock_shares(self, portfolio_id, symbol, num_shares):
+    
+    def get_cash_balance(self, portfolio_id, user_id):
         cursor = self.conn.cursor()
+        query = '''
+            SELECT cash_balance
+              FROM Portfolios
+             WHERE portfolio_id = %s AND user_id = %s
+        '''
+        cursor.execute(query, (portfolio_id, user_id))
+        result = cursor.fetchone()
+        if not result:
+            cursor.close()
+            return None
+        cash_balance = d2f(result[0])
+        cursor.close()
+        return cash_balance
+
+    def buy_stock_shares(self, user_id, portfolio_id, symbol, num_shares):
+        cursor = self.conn.cursor()
+
+        is_owner_query = '''
+            SELECT 1
+                FROM Portfolios
+                WHERE portfolio_id = %s AND user_id = %s
+        '''
+        cursor.execute(is_owner_query, (portfolio_id, user_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None
 
         # Get the latest price per share from StockHistory
         price_query = '''
@@ -140,15 +178,16 @@ class User:
              LIMIT 1;
         '''
         cursor.execute(price_query, (symbol,))
-        price_per_share = d2f(cursor.fetchone()[0])
-        if not price_per_share:
+        result = cursor.fetchone()
+        if not result:
             cursor.close()
             return None  # No price data available
+        price_per_share = d2f(result[0])
         
         # Calculate the total cost and check if the portfolio has enough cash
         total_cost = num_shares * price_per_share
 
-        result = self.update_cash_balance(portfolio_id, -total_cost, record_transaction=False)
+        result = self.update_cash_balance(user_id, portfolio_id, -total_cost, record_transaction=False)
         if not result:
             cursor.close()
             return None
@@ -174,13 +213,39 @@ class User:
         cursor.close()
         return result
     
-    def sell_stock_shares(self, portfolio_id, symbol, num_shares, price_per_share):
+    def sell_stock_shares(self, user_id, portfolio_id, symbol, num_shares):
         """
         Decrease shares without dropping below zero.
         If resulting shares == 0, remove the record.
         """
         cursor = self.conn.cursor()
 
+        is_owner_query = '''
+            SELECT 1
+                FROM Portfolios
+                WHERE portfolio_id = %s AND user_id = %s
+        '''
+        cursor.execute(is_owner_query, (portfolio_id, user_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None
+
+        # Get the latest price per share from StockHistory
+        price_query = '''
+            SELECT close
+              FROM StocksHistory
+             WHERE symbol = %s
+             ORDER BY timestamp DESC
+             LIMIT 1;
+        '''
+        cursor.execute(price_query, (symbol,))
+        result = cursor.fetchone()
+        if not result:
+            cursor.close()
+            return None
+        price_per_share = d2f(result[0])
+        
         # Check current shares
         check_query = '''
             SELECT num_shares
@@ -236,7 +301,7 @@ class User:
         total_revenue = num_shares * price_per_share
 
         # Update the cash balance
-        self.update_cash_balance(portfolio_id, total_revenue, record_transaction=False)
+        self.update_cash_balance(user_id, portfolio_id, total_revenue, record_transaction=False)
 
         # Record the transaction
         transaction_query = '''
@@ -249,8 +314,18 @@ class User:
         cursor.close()
         return result
 
-    def view_portfolio(self, portfolio_id):
+    def view_portfolio(self, user_id, portfolio_id):
         cursor = self.conn.cursor()
+        is_owner_query = '''
+            SELECT 1
+                FROM Portfolios
+                WHERE portfolio_id = %s AND user_id = %s
+        '''
+        cursor.execute(is_owner_query, (portfolio_id, user_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None
         query = '''
             SELECT p.portfolio_id, p.cash_balance, ps.symbol, ps.num_shares
             FROM Portfolios p
@@ -262,11 +337,22 @@ class User:
         cursor.close()
         return portfolio_data
 
-    def view_portfolio_transactions(self, portfolio_id):
+    def view_portfolio_transactions(self, user_id, portfolio_id):
         """
         View all transactions for a given portfolio.
         """
         cursor = self.conn.cursor()
+        is_owner_query = '''
+            SELECT 1
+                FROM Portfolios
+                WHERE portfolio_id = %s AND user_id = %s
+        '''
+        cursor.execute(is_owner_query, (portfolio_id, user_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None
+
         query = '''
             SELECT transaction_id, portfolio_id, symbol, transaction_type, shares, price, cash_change, transaction_time
               FROM PortfolioTransactions
@@ -278,13 +364,22 @@ class User:
         cursor.close()
         return transactions
 
-    def compute_portfolio_value(self, portfolio_id):
+    def compute_portfolio_value(self, user_id, portfolio_id):
         """
         Returns the total current market value of the given portfolio, 
         including its cash balance and the latest stock prices.
         """
         cursor = self.conn.cursor()
-
+        is_owner_query = '''
+            SELECT 1
+                FROM Portfolios
+                WHERE portfolio_id = %s AND user_id = %s
+        '''
+        cursor.execute(is_owner_query, (portfolio_id, user_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None
         # cash balance
         cash_query = '''
             SELECT cash_balance
@@ -315,7 +410,12 @@ class User:
              WHERE ps.portfolio_id = %s
         '''
         cursor.execute(value_query, (portfolio_id,))
-        stock_value = d2f(cursor.fetchone()[0])
+        result = cursor.fetchone()
+        if not result:
+            cursor.close()
+            return None
+        
+        stock_value = d2f(result[0])
         if not stock_value:
             cursor.close()
             return cash_balance
@@ -388,8 +488,20 @@ class User:
         cursor.close()
         return deleted_id
     
-    def add_stock_to_list(self, stocklist_id, symbol, num_shares):
+    def add_stock_to_list(self, user_id, stocklist_id, symbol, num_shares):
         cursor = self.conn.cursor()
+
+        is_owner_query = '''
+            SELECT 1
+            FROM StockLists sl
+            WHERE sl.stocklist_id = %s AND sl.creator_id = %s
+        '''
+        cursor.execute(is_owner_query, (stocklist_id, user_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None
+
         query = '''
             INSERT INTO StockListStocks (stocklist_id, symbol, num_shares)
             VALUES (%s, %s, %s)
@@ -403,13 +515,24 @@ class User:
         cursor.close()
         return result
 
-    def remove_stock_from_list(self, stocklist_id, symbol, num_shares):
+    def remove_stock_from_list(self, user_id, stocklist_id, symbol, num_shares):
         """
         Decrease shares without dropping below zero.
         If resulting shares == 0, remove the record.
         """
         cursor = self.conn.cursor()
 
+        is_owner_query = '''
+            SELECT 1
+            FROM StockLists sl
+            WHERE sl.stocklist_id = %s AND sl.creator_id = %s
+        '''
+        cursor.execute(is_owner_query, (stocklist_id, user_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return None
+        
         # Check current shares
         check_query = '''
             SELECT num_shares
@@ -450,11 +573,15 @@ class User:
             cursor.close()
             return result
 
-    def view_stock_list(self, stocklist_id):
+    def view_stock_list(self, user_id, stocklist_id):
         """
         Return all stocks in the specified list, including the creator's ID.
         
         """
+        accessible_stock_lists = self.view_accessible_stock_lists(user_id)
+        if not any([lst[0] == stocklist_id for lst in accessible_stock_lists]):
+            return None
+        
         cursor = self.conn.cursor()
         query = '''
             SELECT sl.stocklist_id, sl.is_public, sl.creator_id,
@@ -743,9 +870,6 @@ class User:
         cursor.close()
         return result is not None
 
-
-
-
     def view_accessible_stock_lists(self, user_id):
         """
         Return all stock lists that the user can see:
@@ -782,28 +906,16 @@ class User:
         Write a new review for a stock list, if the user does not have one already
         and has access to the stock list (public or shared/owner). 
         """
-        cursor = self.conn.cursor()
 
-        # 1) Check if user can access the stock list:
-        #    - If stocklist is public, or
-        #    - If user is in StockListAccess with 'owner' or 'shared', or
-        #    - user_id is the stock list creator (the 'user_id' column in StockLists).
-        access_query = '''
-            SELECT sl.stocklist_id
-              FROM StockLists sl
-              LEFT JOIN StockListAccess sla 
-                     ON sl.stocklist_id = sla.stocklist_id 
-                    AND sla.user_id = %s
-             WHERE sl.stocklist_id = %s
-               AND (sl.is_public = TRUE
-                    OR sl.creator_id = %s
-                    OR sla.access_role IN ('owner','shared'));
-        '''
-        cursor.execute(access_query, (user_id, stocklist_id, user_id))
-        can_access = cursor.fetchone()
-        if not can_access:
+        if len(review_text) > 4000:
+            return None
+        cursor = self.conn.cursor()
+        
+        # 1) Check if the user has access to the stock list
+        accessible_lists = self.view_accessible_stock_lists(user_id)
+        if not any([lst[0] == stocklist_id for lst in accessible_lists]):
             cursor.close()
-            return None  # user has no access
+            return None
 
         # 2) Check if the user already has a review for this stock list
         check_query = '''
@@ -938,12 +1050,21 @@ class User:
         cursor.close()
         return results
 
-    def fetch_and_store_daily_info_yahoo(self, symbol):
+    def fetch_and_store_daily_info_yahoo(self, symbol, num_days=1):
         """
-        Fetch today's stock info for 'symbol' from Yahoo Finance 
-        and insert/update it in the DailyStockInfo table.
+        Fetch stock info for 'symbol' from Yahoo Finance starting from the day after
+        the most recent day recorded in the database, and insert/update it in the DailyStockInfo table.
+        
+        Args:
+            symbol: The stock symbol to fetch data for
+            num_days: Number of days to fetch (default: 1)
+            
+        Returns:
+            List of daily_info_ids that were inserted/updated, or None if no data
         """
         cursor = self.conn.cursor()
+        
+        # Verify symbol exists in Stocks table
         verify_symbol_query = '''
             SELECT symbol
             FROM Stocks
@@ -954,36 +1075,130 @@ class User:
             cursor.close()
             return None
         
-        ticker = yf.Ticker(symbol)
-        data = ticker.history(period="1d", interval="1d")
-        if data.empty:
-            return None  # No data available
-
-        last_row = data.iloc[-1]
-        open_price = float(last_row["Open"])
-        high_price = float(last_row["High"])
-        low_price = float(last_row["Low"])
-        close_price = float(last_row["Close"])
-        volume = int(last_row["Volume"])
-        today = datetime.date.today()
-
-        query = '''
-            INSERT INTO DailyStockInfo (symbol, date, open, high, low, close, volume)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (symbol, date) 
-            DO UPDATE SET open = EXCLUDED.open,
-                          high = EXCLUDED.high,
-                          low = EXCLUDED.low,
-                          close = EXCLUDED.close,
-                          volume = EXCLUDED.volume
-            RETURNING daily_info_id;
+        # Get the most recent date from DailyStockInfo
+        recent_date_query = '''
+            SELECT MAX(date) 
+            FROM DailyStockInfo
+            WHERE symbol = %s;
         '''
-        cursor.execute(query, (symbol, today, open_price, high_price, low_price, close_price, volume))
-        daily_info_id = cursor.fetchone()[0]
+        cursor.execute(recent_date_query, (symbol,))
+        latest_date = cursor.fetchone()[0]
+        
+        # If no data in DailyStockInfo, get most recent date from StocksHistory
+        if not latest_date:
+            history_date_query = '''
+                SELECT MAX(timestamp::date) 
+                FROM StocksHistory
+                WHERE symbol = %s;
+            '''
+            cursor.execute(history_date_query, (symbol,))
+            latest_date = cursor.fetchone()[0]
+        
+        # Calculate the start date (day after the most recent date)
+        if latest_date:
+            start_date = latest_date + datetime.timedelta(days=1)
+            # Format for Yahoo Finance API
+            start_date_str = start_date.strftime('%Y-%m-%d')
+        else:
+            # If no data in either table, start from 5 years ago
+            start_date = datetime.date.today() - datetime.timedelta(days=5*365)
+            start_date_str = start_date.strftime('%Y-%m-%d')
+        
+        # Only fetch if start date is in the past
+        today = datetime.date.today()
+        if start_date > today:
+            cursor.close()
+            return []  # Already up to date
+        
+        # Fetch data from Yahoo Finance
+        ticker = yf.Ticker(symbol)
+        
+        # Determine period based on num_days
+        if num_days == 1:
+            period = "1d"
+        else:
+            # For multiple days, use a date range
+            period = f"{min(num_days, (today - start_date).days + 1)}d"
+        
+        data = ticker.history(start=start_date_str, period=period)
+        
+        if data.empty:
+            cursor.close()
+            return []  # No new data available
+        
+        # Insert all fetched days
+        inserted_ids = []
+        for index, row in data.iterrows():
+            # Convert index to date object
+            date = index.date() if hasattr(index, 'date') else index.to_pydatetime().date()
+            
+            # Skip if date is in the future
+            if date > today:
+                continue
+                
+            open_price = float(row["Open"])
+            high_price = float(row["High"])
+            low_price = float(row["Low"])
+            close_price = float(row["Close"])
+            volume = int(row["Volume"])
+            
+            query = '''
+                INSERT INTO DailyStockInfo (symbol, date, open, high, low, close, volume)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (symbol, date) 
+                DO UPDATE SET open = EXCLUDED.open,
+                            high = EXCLUDED.high,
+                            low = EXCLUDED.low,
+                            close = EXCLUDED.close,
+                            volume = EXCLUDED.volume
+                RETURNING daily_info_id;
+            '''
+            cursor.execute(query, (symbol, date, open_price, high_price, low_price, close_price, volume))
+            daily_info_id = cursor.fetchone()[0]
+            inserted_ids.append(daily_info_id)
+        
         self.conn.commit()
         cursor.close()
+        return inserted_ids
 
-        return daily_info_id
+    def fetch_and_store_all_stocks_daily_info(self, num_days=1):
+        """
+        Fetch and store daily info for all stocks in the Stocks table.
+        
+        Args:
+            num_days: Number of days to fetch for each stock (default: 1)
+            
+        Returns:
+            Dictionary mapping symbols to lists of inserted daily_info_ids
+        """
+        cursor = self.conn.cursor()
+        
+        # Get all stock symbols
+        query = '''
+            SELECT symbol FROM Stocks;
+        '''
+        cursor.execute(query)
+        symbols = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        
+        results = {}
+        for symbol in symbols:
+            try:
+                # Add a small delay to avoid rate limiting
+                time.sleep(0.5)
+                print(f"Fetching data for {symbol}...")
+                inserted_ids = self.fetch_and_store_daily_info_yahoo(symbol, num_days)
+                if inserted_ids:
+                    results[symbol] = inserted_ids
+                    print(f"✅ Successfully updated {len(inserted_ids)} days for {symbol}")
+                else:
+                    results[symbol] = []
+                    print(f"ℹ️ No new data available for {symbol}")
+            except Exception as e:
+                print(f"❌ Error fetching data for {symbol}: {e}")
+                results[symbol] = None
+        return results
+
 
     def view_stock_info(self, symbol):
         """

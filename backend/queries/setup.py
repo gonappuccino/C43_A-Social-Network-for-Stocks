@@ -1,4 +1,6 @@
-
+import os
+import csv
+import psycopg2
 create_users = '''
     CREATE TABLE IF NOT EXISTS Users (
         user_id SERIAL PRIMARY KEY,
@@ -119,14 +121,122 @@ create_stock_history = '''CREATE TABLE IF NOT EXISTS StocksHistory (
     '''
 
 load_stock_history_from_csv = '''COPY StocksHistory(timestamp, open, high,low, close, volume, symbol) 
-    FROM '/data/SP500History.csv' DELIMITER ',' CSV HEADER;
+    FROM 'data/pg17/data/sp500history.csv' DELIMITER ',' CSV HEADER;
 '''
 
-# Now copy symbols from StocksHistory to Stocks
+def load_stock_history_from_local(conn):
+    """
+    Load stock history data from a local CSV file and insert it into the database
+    """
+    cursor = conn.cursor()
+    
+    csv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                            '../data', 'SP500History.csv')
+    
+    print(f"Reading CSV from local path: {csv_path}")
+    
+    if not os.path.exists(csv_path):
+        print(f"❌ CSV file not found at: {csv_path}")
+        return False
+    
+    # Count for progress reporting
+    row_count = 0
+    success_count = 0
+    
+    try:
+        # Read and insert data row by row
+        with open(csv_path, 'r') as f:
+            csv_reader = csv.reader(f)
+            header = next(csv_reader)  # Skip header row
+            
+            for row in csv_reader:
+                row_count += 1
+                
+                if len(row) != 7:
+                    print(f"⚠️ Skipping invalid row {row_count}: {row}")
+                    continue
+                
+                timestamp, open_price, high, low, close, volume, symbol = row
+                open_price = float(open_price) ; high = float(high) ; low = float(low) ; close = float(close) ; volume = int(volume)
+
+                try:
+                    insert_query = """
+                        INSERT INTO StocksHistory(timestamp, open, high, low, close, volume, symbol)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (symbol, timestamp) DO NOTHING;
+                    """
+                    cursor.execute(insert_query, (timestamp, open_price, high, low, close, volume, symbol))
+                    success_count += 1
+                    
+                    # Commit periodically to avoid huge transactions
+                    if success_count % 1000 == 0:
+                        conn.commit()
+                        print(f"✅ Processed {success_count} rows...")
+                        
+                except psycopg2.Error as e:
+                    conn.rollback()
+                    print(f"⚠️ Error inserting row {row_count}: {e}")
+        
+        # Final commit
+        conn.commit()
+        
+        print(f"✅ Successfully loaded {success_count} out of {row_count} rows")
+        return True
+        
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"❌ Failed to load stock history: {e}")
+        return False
+    finally:
+        cursor.close()
+
+
+def load_stock_history_from_local_fast(conn):
+    """
+    Load stock history data from a local CSV file using efficient batching
+    """
+    cursor = conn.cursor()
+    
+    csv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                            '..\data', 'SP500History.csv')
+    
+    print(f"Reading CSV from local path: {csv_path}")
+    
+    if not os.path.exists(csv_path):
+        print(f"❌ CSV file not found at: {csv_path}")
+        return False
+    
+    try:
+
+        with open(csv_path, 'r') as f:
+            # first row is header
+            next(f)
+            
+            cursor.copy_from(
+                file=f,
+                table='stockshistory', #for some reason this needs to be lower case
+                sep=',',
+                columns=('timestamp', 'open', 'high', 'low', 'close', 'volume', 'symbol'), 
+                null=''
+            )
+        
+        conn.commit()
+        print(f"✅ Successfully loaded stock history data")
+        return True
+        
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"❌ Failed to load stock history: {e}")
+    finally:
+        cursor.close()
+
+
+# Now copy symbols from StocksHistory to Stockss
 copy_symbols = '''
     INSERT INTO Stocks (symbol)
     SELECT DISTINCT symbol
-    FROM StocksHistory;
+    FROM StocksHistory
+    ON CONFLICT (symbol) DO NOTHING;
 '''
 
 create_daily_stock_info = '''
@@ -156,10 +266,5 @@ setup_queries = [
     create_portfolio_stocks,
     create_portfolio_transactions,
     create_reviews,
-
-    # Set up stock history and stocks table
-    #load_stock_history_from_csv,
-    #copy_symbols,
     create_daily_stock_info,
-    
 ]

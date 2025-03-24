@@ -1,7 +1,7 @@
 
 import psycopg2
 from queries.user import User
-from queries.setup import setup_queries
+from queries.setup import setup_queries, load_stock_history_from_local, load_stock_history_from_local_fast, load_stock_history_from_csv, copy_symbols
 import os
 import sys
 from tabulate import tabulate 
@@ -165,11 +165,14 @@ def portfolio_menu():
             # View portfolio details
             try:
                 portfolio_id = int(input("Enter portfolio ID: "))
-                portfolio_data = user.view_portfolio(portfolio_id)
+                portfolio_data = user.view_portfolio(current_user_id, portfolio_id)
+                portfolio_data_no_cash = [[x[2], x[3]] for x in portfolio_data]
+                cash = user.get_cash_balance(portfolio_id, current_user_id)
                 if portfolio_data:
                     print_header(f"Portfolio {portfolio_id} Details")
-                    print(tabulate(portfolio_data, headers=["Portfolio ID", "Cash Balance", "Symbol", "Shares"]))
-                    value = user.compute_portfolio_value(portfolio_id)
+                    print(tabulate(portfolio_data_no_cash, headers=["Symbol", "Shares"]))
+                    print(f"\nCash Balance: ${cash:.2f}")
+                    value = user.compute_portfolio_value(current_user_id, portfolio_id)
                     print(f"\nTotal Portfolio Value: ${value:.2f}")
                 else:
                     print(f"\n❌ Portfolio {portfolio_id} not found or you don't have permission to view it.")
@@ -182,7 +185,7 @@ def portfolio_menu():
             try:
                 portfolio_id = int(input("Enter portfolio ID: "))
                 amount = float(input("Enter amount (positive to deposit, negative to withdraw): $"))
-                result = user.update_cash_balance(portfolio_id, amount)
+                result = user.update_cash_balance(current_user_id, portfolio_id, amount)
                 if result is not None:
                     print(f"\n✅ Cash balance updated successfully. New balance: ${result:.2f}")
                 else:
@@ -198,7 +201,7 @@ def portfolio_menu():
                 symbol = input("Enter stock symbol: ").upper()
                 num_shares = int(input("Enter number of shares to buy: "))
                 
-                result = user.buy_stock_shares(portfolio_id, symbol, num_shares)
+                result = user.buy_stock_shares(current_user_id, portfolio_id, symbol, num_shares)
                 if result:
                     print(f"\n✅ Successfully purchased {num_shares} shares of {symbol}.")
                 else:
@@ -214,7 +217,7 @@ def portfolio_menu():
                 symbol = input("Enter stock symbol: ").upper()
                 num_shares = int(input("Enter number of shares to sell: "))
                 
-                result = user.sell_stock_shares(portfolio_id, symbol, num_shares)
+                result = user.sell_stock_shares(current_user_id, portfolio_id, symbol, num_shares)
                 if result:
                     print(f"\n✅ Successfully sold {num_shares} shares of {symbol}.")
                 else:
@@ -227,7 +230,7 @@ def portfolio_menu():
             # View portfolio transactions
             try:
                 portfolio_id = int(input("Enter portfolio ID: "))
-                transactions = user.view_portfolio_transactions(portfolio_id)
+                transactions = user.view_portfolio_transactions(current_user_id, portfolio_id)
                 
                 if transactions:
                     print_header(f"Portfolio {portfolio_id} Transactions")
@@ -307,7 +310,7 @@ def stocklist_menu():
             # View stock list details
             try:
                 stocklist_id = int(input("Enter stock list ID: "))
-                stocklist_data = user.view_stock_list(stocklist_id)
+                stocklist_data = user.view_stock_list(current_user_id, stocklist_id)
                 if stocklist_data:
                     print_header(f"Stock List {stocklist_id} Details")
                     print(tabulate(stocklist_data, headers=["List ID", "Public", "Creator ID", "Symbol", "Shares"]))
@@ -324,7 +327,7 @@ def stocklist_menu():
                 symbol = input("Enter stock symbol: ").upper()
                 num_shares = int(input("Enter number of shares: "))
                 
-                result = user.add_stock_to_list(stocklist_id, symbol, num_shares)
+                result = user.add_stock_to_list(current_user_id, stocklist_id, symbol, num_shares)
                 if result:
                     print(f"\n✅ Successfully added {num_shares} shares of {symbol} to stock list {stocklist_id}.")
                 else:
@@ -340,7 +343,7 @@ def stocklist_menu():
                 symbol = input("Enter stock symbol: ").upper()
                 num_shares = int(input("Enter number of shares to remove: "))
                 
-                result = user.remove_stock_from_list(stocklist_id, symbol, num_shares)
+                result = user.remove_stock_from_list(current_user_id, stocklist_id, symbol, num_shares)
                 if result:
                     print(f"\n✅ Successfully removed {num_shares} shares of {symbol} from stock list {stocklist_id}.")
                 else:
@@ -585,7 +588,7 @@ def stock_info_menu():
             print("\n❌ Invalid choice. Please enter a number between 1 and 3.")
             pause()
 
-def setup_db():
+def setup_db(load_stock_history = False):
     try:
         conn = psycopg2.connect(
             host=DB_HOST,
@@ -599,17 +602,41 @@ def setup_db():
             cursor.execute(query)
         
         conn.commit()
-        cursor.close()
-        conn.close()
-        print("✅ Database setup complete!")
+        print("✅ Initial Database setup complete!")
         
     except psycopg2.Error as e:
         print(f"❌ Database setup failed: {e}")
         sys.exit(1)
 
+    if not load_stock_history:
+        return
+    try:
+        cursor.execute(load_stock_history_from_csv)
+        cursor.execute(copy_symbols)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("✅ Database setup complete!")
+    except psycopg2.Error as e:
+        print(f"❌ Loading stock history from VM has failed: {e}")
+        print(f"Attemping to load stock history from local")
+        conn.rollback()
+        try:
+            load_stock_history_from_local_fast(conn)
+            cursor.execute(copy_symbols)
+            conn.commit()
+            cursor.close()
+            conn.close()
+            print("✅ Database setup complete!")
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Loading stock history from local has failed: {e}")
+            sys.exit(1)
+
+
 def main():
 
-    setup_db()
+    setup_db(False)
     
     print_header("Welcome to Stock Social Network - A CSCC43 Project")
     print("A command-line social network application for stock investors")
