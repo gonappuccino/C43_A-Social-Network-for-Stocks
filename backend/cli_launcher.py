@@ -81,7 +81,6 @@ def login_menu():
             pause()
 
 def main_menu():
-    """Display the main menu and handle navigation."""
     global current_user_id, current_username  # Move this to the top of the function
     
     while True:
@@ -113,7 +112,6 @@ def main_menu():
             pause()
 
 def portfolio_menu():
-    """Handle portfolio-related operations."""
     while True:
         print_header("Portfolio Management")
         print("1. View All Portfolios")
@@ -249,7 +247,6 @@ def portfolio_menu():
             pause()
 
 def stocklist_menu():
-    """Handle stock list operations."""
     while True:
         print_header("Stock Lists Management")
         print("1. View Accessible Stock Lists")
@@ -259,10 +256,11 @@ def stocklist_menu():
         print("5. Add Stock to List")
         print("6. Remove Stock from List")
         print("7. Share Stock List with Friend")
-        print("8. Review Stock List")
-        print("9. View Reviews for Stock List")
-        print("10. Delete Review")
-        print("11. Return to Main Menu")
+        print("8. Unshare Stock List with Friend")
+        print("9. Review Stock List")
+        print("10. View Reviews for Stock List")
+        print("11. Delete Review")
+        print("12. Return to Main Menu")
         
         choice = input("\nEnter your choice (1-10): ")
         
@@ -273,8 +271,8 @@ def stocklist_menu():
                 print_header("Your Accessible Stock Lists")
                 formatted_lists = []
                 for sl in stock_lists:
-                    formatted_lists.append([sl[0], sl[1], sl[2], "Yes" if sl[3] else "No", sl[4]])
-                print(tabulate(formatted_lists, headers=["List ID", "List Name", "Creator ID", "Public", "Visibility"]))
+                    formatted_lists.append([sl[0], sl[1], sl[2], sl[3], "Yes" if sl[4] else "No", sl[5]])
+                print(tabulate(formatted_lists, headers=["List ID", "List Name", "Creator ID", "Creator Name", "Public", "Visibility"]))
             else:
                 print("You don't have access to any stock lists.")
             pause()
@@ -358,15 +356,32 @@ def stocklist_menu():
                 friend_id = int(input("Enter friend's user ID: "))
                 
                 result = user.share_stock_list(stocklist_id, current_user_id, friend_id)
-                if result:
+                if result == 1:
                     print(f"\n✅ Stock list {stocklist_id} shared successfully with user {friend_id}.")
+                elif result == -1:
+                    print(f"\n❌ You do not own stock list {stocklist_id}.")
+                elif result == -2:
+                    print(f"\n❌ User {friend_id} is not your friend.")
                 else:
                     print("\n❌ Failed to share stock list. Check that you own the list and the user is your friend.")
             except ValueError:
                 print("\n❌ Invalid input. Please enter valid numbers.")
             pause()
-            
         elif choice == '8':
+            # Unshare stock list with friend
+            try:
+                stocklist_id = int(input("Enter stock list ID to unshare: "))
+                friend_id = int(input("Enter friend's user ID: "))
+                
+                result = user.unshare_stock_list(stocklist_id, current_user_id, friend_id)
+                if result:
+                    print(f"\n✅ Stock list {stocklist_id} unshared successfully with user {friend_id}.")
+                else:
+                    print("\n❌ Failed to unshare stock list. Check that you own the list and the user is your friend.")
+            except ValueError:
+                print("\n❌ Invalid input. Please enter valid numbers.")
+            pause()
+        elif choice == '9':
             # Review stock list
             try:
                 stocklist_id = int(input("Enter stock list ID to review: "))
@@ -381,7 +396,7 @@ def stocklist_menu():
                 print("\n❌ Invalid stock list ID. Please enter a valid number.")
             pause()
             
-        elif choice == '9':
+        elif choice == '10':
             # View reviews for stock list
             try:
                 stocklist_id = int(input("Enter stock list ID: "))
@@ -398,7 +413,7 @@ def stocklist_menu():
                 print("\n❌ Invalid stock list ID. Please enter a valid number.")
             pause()
 
-        elif choice == '10':
+        elif choice == '11':
             # Delete review
             try:
                 review_id = int(input("Enter review ID to delete: "))
@@ -411,7 +426,7 @@ def stocklist_menu():
                 print("\n❌ Invalid review ID. Please enter a valid number.")
             pause()
             
-        elif choice == '11':
+        elif choice == '12':
             return
             
         else:
@@ -419,7 +434,6 @@ def stocklist_menu():
             pause()
 
 def friends_menu():
-    """Handle friend-related operations."""
     while True:
         print_header("Friends Management")
         print("1. View Friends")
@@ -438,8 +452,8 @@ def friends_menu():
             friends = user.view_friends(current_user_id)
             if friends:
                 print_header("Your Friends")
-                for friend_id in friends:
-                    print(f"User ID: {friend_id}")
+                for friend_id, friend_name in friends:
+                    print(f"User ID: {friend_id}, Username: {friend_name}")
             else:
                 print("You don't have any friends yet.")
             pause()
@@ -472,7 +486,7 @@ def friends_menu():
             if requests:
                 print_header("Incoming Friend Requests")
                 for req in requests:
-                    print(f"Request ID: {req[0]}, From User ID: {req[1]}")
+                    print(f"Request ID: {req[0]}, From User ID: {req[1]}, Username: {req[2]}")
             else:
                 print("You don't have any incoming friend requests.")
             pause()
@@ -483,7 +497,7 @@ def friends_menu():
             if requests:
                 print_header("Outgoing Friend Requests")
                 for req in requests:
-                    print(f"Request ID: {req[0]}, To User ID: {req[1]}")
+                    print(f"Request ID: {req[0]}, To User ID: {req[1]}, Username: {req[2]}")
             else:
                 print("You don't have any outgoing friend requests.")
             pause()
@@ -492,11 +506,11 @@ def friends_menu():
             # Accept friend request
             try:
                 request_id = int(input("Enter request ID to accept: "))
-                result = user.accept_friend_request(request_id)
+                result = user.accept_friend_request(request_id, current_user_id)
                 if result:
                     print(f"\n✅ Friend request {request_id} accepted successfully.")
                 else:
-                    print(f"\n❌ Failed to accept friend request {request_id}.")
+                    print(f"\n❌ Failed to accept friend request {request_id}. Check if this request exists or is a request to you")
             except ValueError:
                 print("\n❌ Invalid request ID. Please enter a valid number.")
             pause()
@@ -535,7 +549,6 @@ def friends_menu():
             pause()
 
 def stock_info_menu():
-    """Handle stock information operations."""
     while True:
         print_header("Stock Information")
         print("1. View Stock Info")
@@ -573,7 +586,6 @@ def stock_info_menu():
             pause()
 
 def setup_db():
-    """Set up the database tables if they don't exist."""
     try:
         conn = psycopg2.connect(
             host=DB_HOST,

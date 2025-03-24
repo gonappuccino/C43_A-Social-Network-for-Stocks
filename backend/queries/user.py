@@ -536,14 +536,17 @@ class User:
         """
         cursor = self.conn.cursor()
         query = '''
-            SELECT CASE WHEN sender_id = %s THEN receiver_id 
-                        ELSE sender_id END AS friend_id
-              FROM FriendRequest
-             WHERE (sender_id = %s OR receiver_id = %s)
-               AND status = 'accepted';
+            SELECT 
+                CASE WHEN sender_id = %s THEN receiver_id ELSE sender_id END AS friend_id,
+                CASE WHEN sender_id = %s THEN u2.username ELSE u1.username END AS friend_name
+            FROM FriendRequest 
+            LEFT JOIN Users u1 ON sender_id = u1.user_id
+            LEFT JOIN Users u2 ON receiver_id = u2.user_id
+            WHERE (sender_id = %s OR receiver_id = %s)
+            AND status = 'accepted';
         '''
-        cursor.execute(query, (user_id, user_id, user_id))
-        friends = [row[0] for row in cursor.fetchall()]
+        cursor.execute(query, (user_id, user_id, user_id, user_id))
+        friends = cursor.fetchall()
         cursor.close()
         return friends
 
@@ -553,8 +556,8 @@ class User:
         """
         cursor = self.conn.cursor()
         query = '''
-            SELECT request_id, sender_id
-              FROM FriendRequest
+            SELECT request_id, sender_id, u.username AS sender_name
+              FROM FriendRequest LEFT JOIN Users u ON sender_id = u.user_id
              WHERE receiver_id = %s
                AND status = 'pending';
         '''
@@ -569,8 +572,8 @@ class User:
         """
         cursor = self.conn.cursor()
         query = '''
-            SELECT request_id, receiver_id
-              FROM FriendRequest
+            SELECT request_id, receiver_id, u.username AS receiver_name
+              FROM FriendRequest LEFT JOIN Users u ON receiver_id = u.user_id
              WHERE sender_id = %s
                AND status = 'pending';
         '''
@@ -579,9 +582,10 @@ class User:
         cursor.close()
         return outgoing
 
-    def accept_friend_request(self, request_id):
+    def accept_friend_request(self, request_id, user_id):
         """
         Accept a friend request by setting status to 'accepted'.
+        We only allow the receiver to accept the request.
         """
         cursor = self.conn.cursor()
         query = '''
@@ -590,17 +594,19 @@ class User:
                    updated_at = CURRENT_TIMESTAMP
              WHERE request_id = %s
                AND status = 'pending'
+               AND receiver_id = %s
             RETURNING request_id;
         '''
-        cursor.execute(query, (request_id,))
+        cursor.execute(query, (request_id, user_id))
         result = cursor.fetchone()
         self.conn.commit()
         cursor.close()
         return result
 
-    def reject_friend_request(self, request_id):
+    def reject_friend_request(self, request_id, user_id):
         """
         Reject a friend request by setting status to 'rejected'.
+        Receiver or sender can reject the request.
         """
         cursor = self.conn.cursor()
         query = '''
@@ -609,9 +615,10 @@ class User:
                    updated_at = CURRENT_TIMESTAMP
              WHERE request_id = %s
                AND status = 'pending'
+                AND (receiver_id = %s OR sender_id = %s)
             RETURNING request_id;
         '''
-        cursor.execute(query, (request_id,))
+        cursor.execute(query, (request_id, user_id, user_id))
         result = cursor.fetchone()
         self.conn.commit()
         cursor.close()
@@ -665,27 +672,28 @@ class User:
     
     def share_stock_list(self, stocklist_id, owner_id, friend_id):
         """
-        Share an existing stock list with a friend. Must verify that
-        'owner_id' is indeed the list’s creator or has 'owner' role.
+        Share an existing stock list with a friend. Must verify that the person
+        sharing the list is the owner
         """
         cursor = self.conn.cursor()
         # Check if the caller actually owns this list or is in owner role
         check_owner_query = '''
             SELECT 1
-              FROM StockListAccess
-             WHERE stocklist_id = %s AND user_id = %s AND access_role = 'owner';
+              FROM StockLists
+              WHERE stocklist_id = %s AND creator_id = %s;
         '''
         cursor.execute(check_owner_query, (stocklist_id, owner_id))
         is_owner = cursor.fetchone()
         if not is_owner:
             cursor.close()
-            return None  # Caller is not the owner.
+            return -1  # Caller is not the owner.
         
         # Check if friend_id is actually a friend of owner_id
         friends = self.view_friends(owner_id)
-        if friend_id not in friends:
+        friend_ids = [f[0] for f in friends]
+        if friend_id not in friend_ids:
             cursor.close()
-            return None  # Friend is not a friend of the owner.
+            return -2  # Friend is not a friend of the owner.
 
         # Insert or update an access row for the friend
         share_query = '''
@@ -698,7 +706,7 @@ class User:
 
         self.conn.commit()
         cursor.close()
-        return True
+        return 1
 
     def unshare_stock_list(self, stocklist_id, owner_id, friend_id):
         """
@@ -749,6 +757,7 @@ class User:
             SELECT DISTINCT sl.stocklist_id,
                             sl.list_name,
                             sl.creator_id,
+                            u.username AS creator_name,
                             sl.is_public,
                             CASE WHEN sla.access_role = 'owner' THEN 'private'
                                  WHEN sla.access_role = 'shared' THEN 'shared'
@@ -758,6 +767,8 @@ class User:
               LEFT JOIN StockListAccess sla
                      ON sl.stocklist_id = sla.stocklist_id
                     AND sla.user_id = %s
+              LEFT JOIN Users u
+                     ON sl.creator_id = u.user_id
              WHERE sl.is_public = TRUE
                 OR sla.user_id = %s;
         '''
@@ -886,57 +897,43 @@ class User:
         return deleted_id
 
     def view_reviews(self, stocklist_id, user_id):
-        """
-        View all reviews for the specified stock list under the rules:
-          - If the list is public, return all reviews.
-          - If not public, only show reviews authored by `user_id` OR the user is the list owner.
-        """
         cursor = self.conn.cursor()
 
-        # 1) Check if the list is public and get the list owner
-        check_query = '''
-            SELECT is_public, creator_id
-              FROM StockLists
-             WHERE stocklist_id = %s
+        # check access
+        access_query = '''
+            SELECT sl.is_public, sl.creator_id, sla.access_role
+            FROM StockLists sl
+            LEFT JOIN StockListAccess sla ON sl.stocklist_id = sla.stocklist_id AND sla.user_id = %s
+            WHERE sl.stocklist_id = %s
         '''
-        cursor.execute(check_query, (stocklist_id,))
-        list_info = cursor.fetchone()
-        if not list_info:
+        cursor.execute(access_query, (user_id, stocklist_id))
+        access_info = cursor.fetchone()
+        
+        if not access_info:
             cursor.close()
-            return []  # no stock list found
-        is_public, list_owner = list_info
-
-        # 2) If the list is public, the user can see all reviews
-        #    Otherwise, user can see only their own reviews OR if user is the owner
-        if is_public:
-            query = '''
-                SELECT r.review_id,
-                       r.user_id,
-                       r.review_text,
-                       r.created_at,
-                       r.updated_at
-                  FROM Reviews r
-                 WHERE r.stocklist_id = %s
-                 ORDER BY r.created_at ASC;
-            '''
-            cursor.execute(query, (stocklist_id,))
-        else:
-            # not public => user sees only reviews by themself or from the user_id who created the list
-            query = '''
-                SELECT r.review_id,
-                       r.user_id,
-                       r.review_text,
-                       r.created_at,
-                       r.updated_at
-                  FROM Reviews r
-                 WHERE r.stocklist_id = %s
-                   AND (r.user_id = %s OR %s = %s)
-                 ORDER BY r.created_at ASC;
-            '''
-            # The condition "(r.user_id = %s OR %s = %s)" means "r.user_id = user_id OR user_id == list_owner"
-            # We pass user_id, user_id, and list_owner as parameters
-            cursor.execute(query, (stocklist_id, user_id, user_id, list_owner))
-
+            return []  # stock list doesn't exist
+            
+        is_public, list_owner, access_role = access_info
+        
+        # check access
+        has_access = is_public or list_owner == user_id or access_role in ('owner', 'shared')
+        
+        if not has_access:
+            cursor.close()
+            return []  # user doesn't have access to this stock list
+        
+        # get reviews
+        query = '''
+            SELECT r.review_id,
+                r.user_id,
+                r.review_text,
+                r.created_at,
+                r.updated_at
+            FROM Reviews r
+            WHERE r.stocklist_id = %s
+            ORDER BY r.created_at ASC;
+        '''
+        cursor.execute(query, (stocklist_id,))
         results = cursor.fetchall()
         cursor.close()
         return results
