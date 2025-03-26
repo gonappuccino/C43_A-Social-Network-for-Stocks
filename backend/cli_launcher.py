@@ -1,6 +1,10 @@
-
 import psycopg2
-from queries.user import User
+from queries.auth import Auth
+from queries.portfolio import Portfolio
+from queries.stock_list import StockList
+from queries.friends import Friends
+from queries.stock_data import StockData
+from queries.reviews import Reviews
 from queries.setup import setup_queries, load_stock_history_from_local, load_stock_history_from_local_fast, load_stock_history_from_csv, copy_symbols
 import os
 import sys
@@ -12,8 +16,13 @@ DB_NAME = 'postgres'
 DB_USER = 'postgres'
 DB_PASSWORD = '2357'
 
-# Instantiate the User class
-user = User()
+# Instantiate the classes
+auth = Auth()
+portfolio = Portfolio()
+stock_list = StockList()
+friends = Friends()
+stock_data = StockData()
+reviews = Reviews()
 
 # Global variables
 current_user_id = None
@@ -47,7 +56,7 @@ def login_menu():
             email = input("Email: ")
             password = input("Password: ")
             
-            result = user.login(email, password)
+            result = auth.login(email, password)
             if result:
                 current_user_id = result[0]
                 current_username = email  # You might want to fetch the actual username
@@ -63,7 +72,7 @@ def login_menu():
             email = input("Email: ")
             password = input("Password: ")
             
-            success = user.register(username, password, email)
+            success = auth.register(username, password, email)
             if success:
                 print(f"\n✅ Registration successful! Welcome {username}.")
                 print("Please login with your new credentials.")
@@ -129,7 +138,7 @@ def portfolio_menu():
         if choice == '1':
             # View all portfolios for current user
             print_header("Your Portfolios")
-            portfolios = user.view_user_portfolios(current_user_id)
+            portfolios = portfolio.view_user_portfolios(current_user_id)
             if portfolios:
                 # Assuming view_portfolio returns formatted data
                 print(tabulate(portfolios, headers=["Portfolio ID", "Portfolio Name", "Cash Balance", "Total Shares", "Created At"]))
@@ -142,7 +151,7 @@ def portfolio_menu():
             try:
                 portfolio_name = input("Enter portfolio name: ")
                 initial_cash = float(input("Initial cash balance: $"))
-                portfolio_id = user.create_portfolio(current_user_id, portfolio_name, initial_cash)
+                portfolio_id = portfolio.create_portfolio(current_user_id, portfolio_name, initial_cash)
                 print(f"\n✅ Portfolio created successfully with ID: {portfolio_id}")
             except ValueError:
                 print("\n❌ Invalid amount. Please enter a valid number.")
@@ -152,7 +161,7 @@ def portfolio_menu():
             # Delete portfolio
             try:
                 portfolio_id = int(input("Enter portfolio ID to delete: "))
-                result = user.delete_portfolio(portfolio_id, current_user_id)
+                result = portfolio.delete_portfolio(portfolio_id, current_user_id)
                 if result:
                     print(f"\n✅ Portfolio {portfolio_id} deleted successfully.")
                 else:
@@ -165,14 +174,14 @@ def portfolio_menu():
             # View portfolio details
             try:
                 portfolio_id = int(input("Enter portfolio ID: "))
-                portfolio_data = user.view_portfolio(current_user_id, portfolio_id)
+                portfolio_data = portfolio.view_portfolio(current_user_id, portfolio_id)
                 portfolio_data_no_cash = [[x[2], x[3]] for x in portfolio_data]
-                cash = user.get_cash_balance(portfolio_id, current_user_id)
+                cash = portfolio.get_cash_balance(portfolio_id, current_user_id)
                 if portfolio_data:
                     print_header(f"Portfolio {portfolio_id} Details")
                     print(tabulate(portfolio_data_no_cash, headers=["Symbol", "Shares"]))
                     print(f"\nCash Balance: ${cash:.2f}")
-                    value = user.compute_portfolio_value(current_user_id, portfolio_id)
+                    value = portfolio.compute_portfolio_value(current_user_id, portfolio_id)
                     print(f"\nTotal Portfolio Value: ${value:.2f}")
                 else:
                     print(f"\n❌ Portfolio {portfolio_id} not found or you don't have permission to view it.")
@@ -185,7 +194,7 @@ def portfolio_menu():
             try:
                 portfolio_id = int(input("Enter portfolio ID: "))
                 amount = float(input("Enter amount (positive to deposit, negative to withdraw): $"))
-                result = user.update_cash_balance(current_user_id, portfolio_id, amount)
+                result = portfolio.update_cash_balance(current_user_id, portfolio_id, amount)
                 if result is not None:
                     print(f"\n✅ Cash balance updated successfully. New balance: ${result:.2f}")
                 else:
@@ -201,7 +210,7 @@ def portfolio_menu():
                 symbol = input("Enter stock symbol: ").upper()
                 num_shares = int(input("Enter number of shares to buy: "))
                 
-                result = user.buy_stock_shares(current_user_id, portfolio_id, symbol, num_shares)
+                result = portfolio.buy_stock_shares(current_user_id, portfolio_id, symbol, num_shares)
                 if result:
                     print(f"\n✅ Successfully purchased {num_shares} shares of {symbol}.")
                 else:
@@ -217,7 +226,7 @@ def portfolio_menu():
                 symbol = input("Enter stock symbol: ").upper()
                 num_shares = int(input("Enter number of shares to sell: "))
                 
-                result = user.sell_stock_shares(current_user_id, portfolio_id, symbol, num_shares)
+                result = portfolio.sell_stock_shares(current_user_id, portfolio_id, symbol, num_shares)
                 if result:
                     print(f"\n✅ Successfully sold {num_shares} shares of {symbol}.")
                 else:
@@ -230,7 +239,7 @@ def portfolio_menu():
             # View portfolio transactions
             try:
                 portfolio_id = int(input("Enter portfolio ID: "))
-                transactions = user.view_portfolio_transactions(current_user_id, portfolio_id)
+                transactions = portfolio.view_portfolio_transactions(current_user_id, portfolio_id)
                 
                 if transactions:
                     print_header(f"Portfolio {portfolio_id} Transactions")
@@ -269,7 +278,7 @@ def stocklist_menu():
         
         if choice == '1':
             # View accessible stock lists
-            stock_lists = user.view_accessible_stock_lists(current_user_id)
+            stock_lists = stock_list.view_accessible_stock_lists(current_user_id)
             if stock_lists:
                 print_header("Your Accessible Stock Lists")
                 formatted_lists = []
@@ -287,7 +296,7 @@ def stocklist_menu():
             is_public = is_public_input == 'y'
             
             try:
-                stocklist_id = user.create_stock_list(current_user_id, stocklist_name, is_public)
+                stocklist_id = stock_list.create_stock_list(current_user_id, stocklist_name, is_public)
                 print(f"\n✅ Stock list created successfully with ID: {stocklist_id}")
             except Exception as e:
                 print(f"\n❌ Error creating stock list: {e}")
@@ -297,7 +306,7 @@ def stocklist_menu():
             # Delete stock list
             try:
                 stocklist_id = int(input("Enter stock list ID to delete: "))
-                result = user.delete_stock_list(stocklist_id, current_user_id)
+                result = stock_list.delete_stock_list(stocklist_id, current_user_id)
                 if result:
                     print(f"\n✅ Stock list {stocklist_id} deleted successfully.")
                 else:
@@ -310,7 +319,7 @@ def stocklist_menu():
             # View stock list details
             try:
                 stocklist_id = int(input("Enter stock list ID: "))
-                stocklist_data = user.view_stock_list(current_user_id, stocklist_id)
+                stocklist_data = stock_list.view_stock_list(current_user_id, stocklist_id)
                 if stocklist_data:
                     print_header(f"Stock List {stocklist_id} Details")
                     print(tabulate(stocklist_data, headers=["List ID", "Public", "Creator ID", "Symbol", "Shares"]))
@@ -327,7 +336,7 @@ def stocklist_menu():
                 symbol = input("Enter stock symbol: ").upper()
                 num_shares = int(input("Enter number of shares: "))
                 
-                result = user.add_stock_to_list(current_user_id, stocklist_id, symbol, num_shares)
+                result = stock_list.add_stock_to_list(current_user_id, stocklist_id, symbol, num_shares)
                 if result:
                     print(f"\n✅ Successfully added {num_shares} shares of {symbol} to stock list {stocklist_id}.")
                 else:
@@ -343,7 +352,7 @@ def stocklist_menu():
                 symbol = input("Enter stock symbol: ").upper()
                 num_shares = int(input("Enter number of shares to remove: "))
                 
-                result = user.remove_stock_from_list(current_user_id, stocklist_id, symbol, num_shares)
+                result = stock_list.remove_stock_from_list(current_user_id, stocklist_id, symbol, num_shares)
                 if result:
                     print(f"\n✅ Successfully removed {num_shares} shares of {symbol} from stock list {stocklist_id}.")
                 else:
@@ -358,7 +367,7 @@ def stocklist_menu():
                 stocklist_id = int(input("Enter stock list ID to share: "))
                 friend_id = int(input("Enter friend's user ID: "))
                 
-                result = user.share_stock_list(stocklist_id, current_user_id, friend_id)
+                result = stock_list.share_stock_list(stocklist_id, current_user_id, friend_id)
                 if result == 1:
                     print(f"\n✅ Stock list {stocklist_id} shared successfully with user {friend_id}.")
                 elif result == -1:
@@ -376,7 +385,7 @@ def stocklist_menu():
                 stocklist_id = int(input("Enter stock list ID to unshare: "))
                 friend_id = int(input("Enter friend's user ID: "))
                 
-                result = user.unshare_stock_list(stocklist_id, current_user_id, friend_id)
+                result = stock_list.unshare_stock_list(stocklist_id, current_user_id, friend_id)
                 if result:
                     print(f"\n✅ Stock list {stocklist_id} unshared successfully with user {friend_id}.")
                 else:
@@ -390,7 +399,7 @@ def stocklist_menu():
                 stocklist_id = int(input("Enter stock list ID to review: "))
                 review_text = input("Enter your review: ")
                 
-                review_id = user.create_review(current_user_id, stocklist_id, review_text)
+                review_id = stock_list.create_review(current_user_id, stocklist_id, review_text)
                 if review_id:
                     print(f"\n✅ Review submitted successfully with ID: {review_id}")
                 else:
@@ -403,7 +412,7 @@ def stocklist_menu():
             # View reviews for stock list
             try:
                 stocklist_id = int(input("Enter stock list ID: "))
-                reviews = user.view_reviews(stocklist_id, current_user_id)
+                reviews = stock_list.view_reviews(stocklist_id, current_user_id)
                 if reviews:
                     print_header(f"Reviews for Stock List {stocklist_id}")
                     formatted_reviews = []
@@ -420,7 +429,7 @@ def stocklist_menu():
             # Delete review
             try:
                 review_id = int(input("Enter review ID to delete: "))
-                result = user.delete_review(review_id, current_user_id)
+                result = stock_list.delete_review(review_id, current_user_id)
                 if result:
                     print(f"\n✅ Review {review_id} deleted successfully.")
                 else:
@@ -452,7 +461,7 @@ def friends_menu():
         
         if choice == '1':
             # View friends
-            friends = user.view_friends(current_user_id)
+            friends = friends.view_friends(current_user_id)
             if friends:
                 print_header("Your Friends")
                 for friend_id, friend_name in friends:
@@ -465,7 +474,7 @@ def friends_menu():
             # Send friend request
             try:
                 receiver_id = int(input("Enter user ID to send friend request: "))
-                result = user.send_friend_request(current_user_id, receiver_id)
+                result = friends.send_friend_request(current_user_id, receiver_id)
                 if result:
                     if result > 0:
                         print(f"\n✅ Friend request sent successfully to user {receiver_id}.")
@@ -485,7 +494,7 @@ def friends_menu():
             
         elif choice == '3':
             # View incoming friend requests
-            requests = user.view_incoming_requests(current_user_id)
+            requests = friends.view_incoming_requests(current_user_id)
             if requests:
                 print_header("Incoming Friend Requests")
                 for req in requests:
@@ -496,7 +505,7 @@ def friends_menu():
             
         elif choice == '4':
             # View outgoing friend requests
-            requests = user.view_outgoing_requests(current_user_id)
+            requests = friends.view_outgoing_requests(current_user_id)
             if requests:
                 print_header("Outgoing Friend Requests")
                 for req in requests:
@@ -509,7 +518,7 @@ def friends_menu():
             # Accept friend request
             try:
                 request_id = int(input("Enter request ID to accept: "))
-                result = user.accept_friend_request(request_id, current_user_id)
+                result = friends.accept_friend_request(request_id, current_user_id)
                 if result:
                     print(f"\n✅ Friend request {request_id} accepted successfully.")
                 else:
@@ -522,7 +531,7 @@ def friends_menu():
             # Reject friend request
             try:
                 request_id = int(input("Enter request ID to reject: "))
-                result = user.reject_friend_request(request_id)
+                result = friends.reject_friend_request(request_id)
                 if result:
                     print(f"\n✅ Friend request {request_id} rejected successfully.")
                 else:
@@ -535,7 +544,7 @@ def friends_menu():
             # Delete friend
             try:
                 friend_id = int(input("Enter user ID of friend to delete: "))
-                result = user.delete_friend(current_user_id, friend_id)
+                result = friends.delete_friend(current_user_id, friend_id)
                 if result:
                     print(f"\n✅ Friend {friend_id} deleted successfully.")
                 else:
@@ -571,7 +580,7 @@ def stock_info_menu():
                 pause()
                 continue
             graph = input("Do you want to see a graph of the stock? (y/n): ")
-            data = user.view_stock_info(symbol, period)
+            data = stock_data.view_stock_info(symbol, period)
             if data:
                 print_header(f"Stock Information for {symbol}")
                 print(tabulate(data, headers=["Date", "Open", "High", "Low", "Close", "Volume"]))
@@ -579,14 +588,14 @@ def stock_info_menu():
                 print(f"\nNo stock information found for {symbol}.")
 
             if graph.lower() == 'y':
-                user.display_stock_chart(symbol, period)
+                stock_data.display_stock_chart(symbol, period)
             pause()
             
         elif choice == '2':
             # Fetch latest stock info
             symbol = input("Enter stock symbol: ").upper()
             num_days = int(input("Enter number of days to fetch (1-365): "))
-            result = user.fetch_and_store_daily_info_yahoo(symbol, num_days)
+            result = stock_data.fetch_and_store_daily_info_yahoo(symbol, num_days)
             if result:
                 print(f"\n✅ Successfully fetched and stored {num_days} days of data for {symbol}.")
             else:
@@ -596,7 +605,7 @@ def stock_info_menu():
         elif choice == '3':
             # Fetch latest stock info for all stocks
             num_days = int(input("Enter number of days to fetch (1-365): "))
-            result = user.fetch_and_store_all_stocks_daily_info(num_days)
+            result = stock_data.fetch_and_store_all_stocks_daily_info(num_days)
             if result:
                 print(f"\n✅ Successfully fetched and stored {num_days} days of data for all stocks.")
             else:
