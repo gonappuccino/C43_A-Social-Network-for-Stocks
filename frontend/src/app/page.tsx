@@ -1,8 +1,19 @@
+'use client';
+
 import Navbar from '../components/Navbar';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useState, useEffect } from 'react';
 
 export default function Home() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  
+  // Check login status when component mounts
+  useEffect(() => {
+    const loginStatus = localStorage.getItem('isLoggedIn') === 'true';
+    setIsLoggedIn(loginStatus);
+  }, []);
+  
   return (
     <>
       <Navbar />
@@ -15,6 +26,31 @@ export default function Home() {
             <p className="mx-auto max-w-[700px] text-gray-500 md:text-xl dark:text-gray-400">
               Track portfolios, analyze stocks, and connect with friends to make better investment decisions.
             </p>
+            <div className="flex flex-col sm:flex-row gap-4 mt-6">
+              {isLoggedIn ? (
+                <Link 
+                  href="/dashboard" 
+                  className="px-8 py-3 text-white bg-indigo-600 rounded-md hover:bg-indigo-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                >
+                  Go to Dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link 
+                    href="/auth?type=register" 
+                    className="px-8 py-3 text-white bg-indigo-600 rounded-md hover:bg-indigo-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                  >
+                    Sign Up
+                  </Link>
+                  <Link 
+                    href="/auth?type=login" 
+                    className="px-8 py-3 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-gray-800 dark:text-white dark:border-gray-600 dark:hover:bg-gray-700"
+                  >
+                    Sign In
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
         </section>
 

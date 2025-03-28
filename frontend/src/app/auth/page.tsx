@@ -1,4 +1,3 @@
-
 // filepath: c:\Users\jsdan\OneDrive - University of Toronto\CSCC43\C43_A-Social-Network-for-Stocks\frontend\src\app\auth\page.tsx
 'use client';
 
@@ -63,7 +62,8 @@ export default function AuthPage() {
         ? { email: formData.email, password: formData.password }
         : { username: formData.username, email: formData.email, password: formData.password };
       
-      const response = await fetch(`http://127.0.0.1:5000/${endpoint}`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

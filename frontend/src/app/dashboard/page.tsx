@@ -1,4 +1,3 @@
-
 // filepath: c:\Users\jsdan\OneDrive - University of Toronto\CSCC43\C43_A-Social-Network-for-Stocks\frontend\src\app\dashboard\page.tsx
 'use client';
 
@@ -6,17 +5,16 @@ import { useState, useEffect } from 'react';
 import Navbar from '../../components/Navbar';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { 
+  Portfolio, 
+  PortfolioView, 
+  ApiPortfolio, 
+  calculatePortfolioValue, 
+  toPortfolioView 
+} from '@/models/PortfolioModels';
+import AuthCheck from '../../components/AuthCheck';
 
 // Define interfaces for our data types
-interface Portfolio {
-  id: number;
-  name: string;
-  value: number;
-  cash: number;
-  stocks: number;
-  change: number;
-}
-
 interface StockList {
   id: number;
   name: string;
@@ -31,9 +29,16 @@ interface FriendRequest {
   date: string;
 }
 
+// UI-specific Portfolio interface that extends PortfolioView
+interface DashboardPortfolio extends PortfolioView {
+  cash: number;
+  change: number;
+  stockCount: number;
+}
+
 export default function Dashboard() {
   const router = useRouter();
-  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+  const [portfolios, setPortfolios] = useState<DashboardPortfolio[]>([]);
   const [stockLists, setStockLists] = useState<StockList[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
@@ -75,24 +80,55 @@ export default function Dashboard() {
     setIsLoading(true);
     
     try {
-      // Fetch portfolios
-      const portfoliosResponse = await fetch(`http://127.0.0.1:5000/view_portfolio?user_id=${userId}`);
-      const portfoliosData = await portfoliosResponse.json();
+      // Get API URL from environment variable or fallback to localhost:5001
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
       
-      // Transform portfolio data
-      const transformedPortfolios: Portfolio[] = portfoliosData.map((port: any) => ({
-        id: port.portfolio_id,
-        name: `Portfolio ${port.portfolio_id}`, // You may want to add portfolio names in your backend
-        value: calculatePortfolioValue(port), // This would need a function to sum up holdings value
-        cash: port.cash_balance || 0,
-        stocks: port.stocks ? port.stocks.length : 0,
-        change: 0 // You would calculate this from historical data
-      }));
+      // Mock portfolio data instead of fetching from backend
+      const mockPortfoliosData = [
+        {
+          portfolio_id: 1,
+          portfolio_name: "Growth Portfolio",
+          user_id: parseInt(userId),
+          cash_balance: 2500,
+          created_at: new Date().toISOString(),
+          stocks: [
+            { symbol: "AAPL", num_shares: 10 },
+            { symbol: "MSFT", num_shares: 5 },
+            { symbol: "GOOGL", num_shares: 2 }
+          ]
+        },
+        {
+          portfolio_id: 2,
+          portfolio_name: "Dividend Portfolio",
+          user_id: parseInt(userId),
+          cash_balance: 1800,
+          created_at: new Date().toISOString(),
+          stocks: [
+            { symbol: "JNJ", num_shares: 8 },
+            { symbol: "PG", num_shares: 12 },
+            { symbol: "KO", num_shares: 20 }
+          ]
+        }
+      ];
       
-      setPortfolios(transformedPortfolios);
+      // Transform portfolio data using a manually defined function to avoid TypeScript issues
+      const transformPortfolios = (apiPortfolios: any): DashboardPortfolio[] => {
+        // Check if apiPortfolios is an array, if not convert or create an empty array
+        const portfoliosArray = Array.isArray(apiPortfolios) ? apiPortfolios : (apiPortfolios ? [apiPortfolios] : []);
+        
+        return portfoliosArray.map((port: any) => ({
+          ...toPortfolioView(port),
+          cash: port.cash_balance || 0,
+          stockCount: port.stocks?.length || 0,
+          change: Math.random() * 10 - 5 // Random change between -5% and 5% for mock data
+        }));
+      };
+      
+      console.log('Mock Portfolios data:', mockPortfoliosData);
+      setPortfolios(transformPortfolios(mockPortfoliosData));
       
       // Fetch stock lists
-      const stockListsResponse = await fetch(`http://127.0.0.1:5000/view_accessible_stock_lists?user_id=${userId}`);
+      const stockListsResponse = await fetch(`${apiUrl}/view_accessible_stock_lists?user_id=${userId}`);
       const stockListsData = await stockListsResponse.json();
       
       // Transform stock lists data
@@ -107,7 +143,7 @@ export default function Dashboard() {
       setStockLists(transformedStockLists);
       
       // Fetch incoming friend requests
-      const friendRequestsResponse = await fetch(`http://127.0.0.1:5000/view_incoming_requests?user_id=${userId}`);
+      const friendRequestsResponse = await fetch(`${apiUrl}/view_incoming_requests?user_id=${userId}`);
       const friendRequestsData = await friendRequestsResponse.json();
       
       // Transform friend requests data
@@ -126,18 +162,14 @@ export default function Dashboard() {
     }
   };
   
-  const calculatePortfolioValue = (portfolio: any): number => {
-    // In a real app, you would sum up the cash balance and the current market value of stocks
-    return portfolio.cash_balance || 0;
-  };
-  
   const createNewPortfolio = async () => {
     if (!userId) return;
     
     try {
       console.log("Creating portfolio with user_id:", userId, "and cash:", initialCash);
       
-      const response = await fetch('http://127.0.0.1:5000/create_portfolio', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const response = await fetch(`${apiUrl}/create_portfolio`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -169,7 +201,8 @@ export default function Dashboard() {
     if (!userId) return;
     
     try {
-      const response = await fetch('http://127.0.0.1:5000/accept_friend_request', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const response = await fetch(`${apiUrl}/accept_friend_request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -192,7 +225,8 @@ export default function Dashboard() {
     if (!userId) return;
     
     try {
-      const response = await fetch('http://127.0.0.1:5000/reject_friend_request', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const response = await fetch(`${apiUrl}/reject_friend_request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -218,7 +252,8 @@ export default function Dashboard() {
     try {
       console.log("Creating stock list with creator_id:", userId, "and is_public:", isPublic);
       
-      const response = await fetch('http://127.0.0.1:5000/create_stock_list', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const response = await fetch(`${apiUrl}/create_stock_list`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -249,19 +284,21 @@ export default function Dashboard() {
   
   if (isLoading) {
     return (
-      <>
-        <Navbar />
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-          <p className="text-lg text-gray-500 dark:text-gray-400">Loading your dashboard...</p>
+      <AuthCheck>
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+          <Navbar />
+          <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+            <p className="text-lg text-gray-500 dark:text-gray-400">Loading your dashboard...</p>
+          </div>
         </div>
-      </>
+      </AuthCheck>
     );
   }
   
   return (
-    <>
-      <Navbar />
+    <AuthCheck>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <Navbar />
         <main className="py-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
@@ -310,18 +347,18 @@ export default function Dashboard() {
                         <h3 className="text-lg font-medium text-gray-900 dark:text-white">{portfolio.name}</h3>
                         <div className="mt-3 flex items-end justify-between">
                           <p className="text-2xl font-semibold text-gray-900 dark:text-white">
-                            ${portfolio.value.toLocaleString()}
+                            ${(portfolio.value || 0).toLocaleString()}
                           </p>
                           <p className={`${portfolio.change >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} flex items-center text-sm font-medium`}>
                             <span>
-                              {portfolio.change >= 0 ? '↑' : '↓'} {Math.abs(portfolio.change)}%
+                              {portfolio.change >= 0 ? '↑' : '↓'} {Math.abs(portfolio.change).toFixed(2)}%
                             </span>
                           </p>
                         </div>
                         <div className="mt-4">
                           <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400">
-                            <p>{portfolio.stocks} stocks</p>
-                            <p>Cash: ${portfolio.cash.toLocaleString()}</p>
+                            <p>{portfolio.stockCount} stocks</p>
+                            <p>Cash: ${(portfolio.cash || 0).toLocaleString()}</p>
                           </div>
                         </div>
                         <div className="mt-4">
@@ -539,6 +576,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </>
+    </AuthCheck>
   );
 }
