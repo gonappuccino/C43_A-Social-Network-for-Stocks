@@ -1,6 +1,6 @@
 import psycopg2
 from queries.utils import decimal_to_float as d2f
-
+from queries.friends import Friends
 class StockList:
     conn = psycopg2.connect(
         host='34.130.75.185',
@@ -8,6 +8,7 @@ class StockList:
         user='postgres',
         password='2357'
     )
+    friends = Friends()
 
     def create_stock_list(self, creator_id, list_name, is_public=False):
         try:
@@ -198,8 +199,8 @@ class StockList:
             return -1  # Caller is not the owner.
         
         # Check if friend_id is actually a friend of owner_id
-        friends = self.view_friends(owner_id)
-        friend_ids = [f[0] for f in friends]
+        friends_list = self.friends.view_friends(owner_id)
+        friend_ids = [f[0] for f in friends_list]
         if friend_id not in friend_ids:
             cursor.close()
             return -2  # Friend is not a friend of the owner.

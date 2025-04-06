@@ -45,11 +45,16 @@ class Friends:
                     update_query = '''
                         UPDATE FriendRequest
                            SET status = 'pending',
-                               updated_at = CURRENT_TIMESTAMP
+                               updated_at = CURRENT_TIMESTAMP,
+                               sender_id = %s,
+                               receiver_id = %s
                          WHERE request_id = %s
                         RETURNING request_id;
                     '''
-                    cursor.execute(update_query, (request_id,))
+                    cursor.execute(update_query, (sender_id, receiver_id, request_id))
+                    # send_id and receiver_id need to be updated because in the previous request
+                    # they could have been swapped, and this sent request would show
+                    # as an incoming request to the one who sent it.
                     updated_id = cursor.fetchone()[0]
                     self.conn.commit()
                     cursor.close()

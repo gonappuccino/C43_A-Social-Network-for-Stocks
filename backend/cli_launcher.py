@@ -415,7 +415,7 @@ def stocklist_menu():
                 stocklist_id = int(input("Enter stock list ID to review: "))
                 review_text = input("Enter your review: ")
                 
-                review_id = stock_list.create_review(current_user_id, stocklist_id, review_text)
+                review_id = reviews.create_review(current_user_id, stocklist_id, review_text)
                 if review_id:
                     print(f"\n✅ Review submitted successfully with ID: {review_id}")
                 else:
@@ -428,11 +428,11 @@ def stocklist_menu():
             # View reviews for stock list
             try:
                 stocklist_id = int(input("Enter stock list ID: "))
-                reviews = stock_list.view_reviews(stocklist_id, current_user_id)
-                if reviews:
+                reviews_list = reviews.view_reviews(stocklist_id, current_user_id)
+                if reviews_list:
                     print_header(f"Reviews for Stock List {stocklist_id}")
                     formatted_reviews = []
-                    for r in reviews:
+                    for r in reviews_list:
                         formatted_reviews.append([r[0], r[1], r[2], r[3], r[4]])
                     print(tabulate(formatted_reviews, headers=["Review ID", "User ID", "Text", "Created", "Updated"]))
                 else:
@@ -445,7 +445,7 @@ def stocklist_menu():
             # Delete review
             try:
                 review_id = int(input("Enter review ID to delete: "))
-                result = stock_list.delete_review(review_id, current_user_id)
+                result = reviews.delete_review(review_id, current_user_id)
                 if result:
                     print(f"\n✅ Review {review_id} deleted successfully.")
                 else:
@@ -477,10 +477,10 @@ def friends_menu():
         
         if choice == '1':
             # View friends
-            friends = friends.view_friends(current_user_id)
-            if friends:
+            friend_list = friends.view_friends(current_user_id)
+            if friend_list:
                 print_header("Your Friends")
-                for friend_id, friend_name in friends:
+                for friend_id, friend_name in friend_list:
                     print(f"User ID: {friend_id}, Username: {friend_name}")
             else:
                 print("You don't have any friends yet.")
@@ -547,7 +547,7 @@ def friends_menu():
             # Reject friend request
             try:
                 request_id = int(input("Enter request ID to reject: "))
-                result = friends.reject_friend_request(request_id)
+                result = friends.reject_friend_request(request_id, current_user_id)
                 if result:
                     print(f"\n✅ Friend request {request_id} rejected successfully.")
                 else:
@@ -726,7 +726,7 @@ def setup_db(load_stock_history = False):
 
 def main():
 
-    setup_db(True)
+    setup_db(False)
     pause()
     
     print_header("Welcome to Stock Social Network - A CSCC43 Project")

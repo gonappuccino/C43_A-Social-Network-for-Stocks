@@ -1,5 +1,6 @@
 import psycopg2
 from queries.utils import decimal_to_float as d2f
+from queries.stock_list import StockList
 
 class Reviews:
     conn = psycopg2.connect(
@@ -8,6 +9,7 @@ class Reviews:
         user='postgres',
         password='2357'
     )
+    stock_list = StockList()
 
     def create_review(self, user_id, stocklist_id, review_text):
         """
@@ -20,7 +22,7 @@ class Reviews:
         cursor = self.conn.cursor()
         
         # 1) Check if the user has access to the stock list
-        accessible_lists = self.view_accessible_stock_lists(user_id)
+        accessible_lists = self.stock_list.view_accessible_stock_lists(user_id)
         if not any([lst[0] == stocklist_id for lst in accessible_lists]):
             cursor.close()
             return None
@@ -117,6 +119,7 @@ class Reviews:
         return deleted_id
 
     def view_reviews(self, stocklist_id, user_id):
+
         cursor = self.conn.cursor()
 
         # check access
