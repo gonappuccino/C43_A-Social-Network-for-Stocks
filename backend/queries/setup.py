@@ -28,7 +28,7 @@ create_stock_lists = '''
     CREATE TABLE IF NOT EXISTS StockLists (
         stocklist_id SERIAL PRIMARY KEY,
         list_name VARCHAR(100) NOT NULL,
-        creator_id INT REFERENCES Users(user_id),      -- Owner of this list
+        creator_id INT REFERENCES Users(user_id) ON DELETE CASCADE,      -- Owner of this list
         is_public BOOLEAN DEFAULT FALSE,               -- If True, all users can see it
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -47,7 +47,7 @@ create_stock_list_access = '''
 # Stocks should reference the stock history table
 create_stocks = '''
     CREATE TABLE IF NOT EXISTS Stocks (
-        symbol VARCHAR(10) PRIMARY KEY
+        symbol VARCHAR(5) PRIMARY KEY
     );
     '''
 
@@ -55,8 +55,8 @@ create_stocks = '''
 create_stock_list_stocks = '''
     CREATE TABLE IF NOT EXISTS StockListStocks (
         list_entry_id SERIAL PRIMARY KEY,
-        stocklist_id INT REFERENCES StockLists(stocklist_id),
-        symbol VARCHAR(10) REFERENCES Stocks(symbol),
+        stocklist_id INT REFERENCES StockLists(stocklist_id) ON DELETE CASCADE,
+        symbol VARCHAR(10) REFERENCES Stocks(symbol) ON DELETE CASCADE,
         num_shares INT NOT NULL,
         UNIQUE (stocklist_id, symbol)
     );
@@ -67,7 +67,7 @@ create_portfolios = '''
     CREATE TABLE IF NOT EXISTS Portfolios (
         portfolio_id SERIAL PRIMARY KEY,
         portfolio_name VARCHAR(100) NOT NULL,
-        user_id INT REFERENCES Users(user_id),
+        user_id INT REFERENCES Users(user_id) ON DELETE CASCADE,
         cash_balance DECIMAL(15,2) DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -76,8 +76,8 @@ create_portfolios = '''
 create_portfolio_stocks = '''
     CREATE TABLE IF NOT EXISTS PortfolioStocks (
         portfolio_entry_id SERIAL PRIMARY KEY,
-        portfolio_id INT REFERENCES Portfolios(portfolio_id),
-        symbol VARCHAR(10) REFERENCES Stocks(symbol),
+        portfolio_id INT REFERENCES Portfolios(portfolio_id) ON DELETE CASCADE,
+        symbol VARCHAR(10) REFERENCES Stocks(symbol) ON DELETE CASCADE,
         num_shares INT NOT NULL,
         UNIQUE (portfolio_id, symbol)
     );
@@ -87,7 +87,7 @@ create_portfolio_transactions = '''
     CREATE TABLE IF NOT EXISTS PortfolioTransactions (
         transaction_id SERIAL PRIMARY KEY,
         portfolio_id INT REFERENCES Portfolios(portfolio_id) ON DELETE CASCADE,
-        symbol VARCHAR(10) REFERENCES Stocks(symbol),
+        symbol VARCHAR(10) REFERENCES Stocks(symbol) ON DELETE CASCADE,
         transaction_type VARCHAR(4) CHECK (transaction_type IN ('BUY', 'SELL', 'CASH')),
         shares INT NOT NULL,
         price NUMERIC(15,2) NOT NULL,        -- price per share
@@ -99,7 +99,7 @@ create_portfolio_transactions = '''
 create_reviews = '''
     CREATE TABLE IF NOT EXISTS Reviews (
         review_id SERIAL PRIMARY KEY,
-        user_id INT REFERENCES Users(user_id),
+        user_id INT REFERENCES Users(user_id) ON DELETE CASCADE,
         stocklist_id INT REFERENCES StockLists(stocklist_id) ON DELETE CASCADE,
         review_text TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -115,7 +115,7 @@ create_stock_history = '''CREATE TABLE IF NOT EXISTS StocksHistory (
     low REAL, 
     close REAL, 
     volume INT, 
-    symbol VARCHAR(5), 
+    symbol VARCHAR(5),
     PRIMARY KEY(symbol, timestamp)
     );
     '''
@@ -128,7 +128,7 @@ create_daily_stock_info = '''
         low REAL,
         close REAL,
         volume INT,
-        symbol VARCHAR(5) REFERENCES Stocks(symbol),
+        symbol VARCHAR(5),
         PRIMARY KEY (symbol, timestamp)
     );
 '''

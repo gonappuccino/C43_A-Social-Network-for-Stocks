@@ -132,13 +132,17 @@ class Portfolio:
 
         # Get the latest price per share from StockHistory 
         price_query = '''
-            SELECT close
-              FROM StocksHistory
+            (SELECT close, timestamp
+              FROM DailyStockInfo
              WHERE symbol = %s
-             ORDER BY timestamp DESC
-             LIMIT 1;
+            UNION
+            SELECT close, timestamp
+              FROM StocksHistory
+             WHERE symbol = %s)
+            ORDER BY timestamp DESC
+            LIMIT 1;
         '''
-        cursor.execute(price_query, (symbol,))
+        cursor.execute(price_query, (symbol, symbol))
         result = cursor.fetchone()
         if not result:
             cursor.close()
@@ -192,20 +196,6 @@ class Portfolio:
             cursor.close()
             return None
 
-        # Get the latest price per share from StockHistory
-        price_query = '''
-            SELECT close
-              FROM StocksHistory
-             WHERE symbol = %s
-             ORDER BY timestamp DESC
-             LIMIT 1;
-        '''
-        cursor.execute(price_query, (symbol,))
-        result = cursor.fetchone()
-        if not result:
-            cursor.close()
-            return None
-        price_per_share = d2f(result[0])
         
         # Check current shares
         check_query = '''
@@ -246,14 +236,22 @@ class Portfolio:
 
         # Get the latest price per share from StockHistory
         price_query = '''
-            SELECT close
-              FROM StocksHistory
+            (SELECT close, timestamp
+              FROM DailyStockInfo
              WHERE symbol = %s
-             ORDER BY timestamp DESC
-             LIMIT 1;
+            UNION
+            SELECT close, timestamp
+              FROM StocksHistory
+             WHERE symbol = %s)
+            ORDER BY timestamp DESC
+            LIMIT 1;
         '''
-        cursor.execute(price_query, (symbol,))
-        price_per_share = cursor.fetchone()[0]
+        cursor.execute(price_query, (symbol, symbol))
+        result = cursor.fetchone()
+        if not result:
+            cursor.close()
+            return None
+        price_per_share = d2f(result[0])
         if not price_per_share:
             cursor.close()
             return None  # No price data available
@@ -362,10 +360,14 @@ class Portfolio:
               FROM PortfolioStocks ps
               JOIN (
                 SELECT symbol, MAX(timestamp) AS max_time
-                  FROM StocksHistory
+                  FROM (SELECT symbol, timestamp FROM StocksHistory 
+                          UNION 
+                        SELECT symbol, timestamp FROM DailyStockInfo) combined
                  GROUP BY symbol
               ) AS latest ON ps.symbol = latest.symbol
-              JOIN StocksHistory sh 
+              JOIN (SELECT symbol, timestamp, close FROM StocksHistory 
+                      UNION 
+                    SELECT symbol, timestamp, close FROM DailyStockInfo) sh 
                 ON sh.symbol = ps.symbol
                AND sh.timestamp = latest.max_time
              WHERE ps.portfolio_id = %s

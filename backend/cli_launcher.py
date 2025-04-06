@@ -78,7 +78,7 @@ def login_menu():
                 print("Please login with your new credentials.")
                 pause()
             else:
-                print("\n❌ Username or email already exists. Please try again.")
+                print("\n❌ Username or email already exists or invalid. Please try again.")
                 pause()
                 
         elif choice == '3':
@@ -98,9 +98,10 @@ def main_menu():
         print("2. Stock Lists")
         print("3. Friends")
         print("4. Stock Information")
-        print("5. Log Out")
+        print("5. Delete Account")
+        print("6. Log Out")
         
-        choice = input("\nEnter your choice (1-5): ")
+        choice = input("\nEnter your choice (1-6): ")
         
         if choice == '1':
             portfolio_menu()
@@ -111,13 +112,15 @@ def main_menu():
         elif choice == '4':
             stock_info_menu()
         elif choice == '5':
+            delete_account_menu()
+        elif choice == '6':
             current_user_id = None
             current_username = None
             print("\n✅ Logged out successfully.")
             pause()
             return
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 5.")
+            print("\n❌ Invalid choice. Please enter a number between 1 and 6.")
             pause()
 
 def portfolio_menu():
@@ -175,9 +178,9 @@ def portfolio_menu():
             try:
                 portfolio_id = int(input("Enter portfolio ID: "))
                 portfolio_data = portfolio.view_portfolio(current_user_id, portfolio_id)
-                portfolio_data_no_cash = [[x[2], x[3]] for x in portfolio_data]
-                cash = portfolio.get_cash_balance(portfolio_id, current_user_id)
                 if portfolio_data:
+                    portfolio_data_no_cash = [[x[2], x[3]] for x in portfolio_data]
+                    cash = portfolio.get_cash_balance(portfolio_id, current_user_id)
                     print_header(f"Portfolio {portfolio_id} Details")
                     print(tabulate(portfolio_data_no_cash, headers=["Symbol", "Shares"]))
                     print(f"\nCash Balance: ${cash:.2f}")
@@ -274,7 +277,7 @@ def stocklist_menu():
         print("11. Delete Review")
         print("12. Return to Main Menu")
         
-        choice = input("\nEnter your choice (1-10): ")
+        choice = input("\nEnter your choice (1-12): ")
         
         if choice == '1':
             # View accessible stock lists
@@ -322,7 +325,20 @@ def stocklist_menu():
                 stocklist_data = stock_list.view_stock_list(current_user_id, stocklist_id)
                 if stocklist_data:
                     print_header(f"Stock List {stocklist_id} Details")
-                    print(tabulate(stocklist_data, headers=["List ID", "Public", "Creator ID", "Symbol", "Shares"]))
+                    # Filter out None values and format the data
+                    formatted_data = []
+                    for row in stocklist_data:
+                        if row[3] is not None:  # Only include rows with stock data
+                            formatted_data.append([row[3], row[4]])  # Symbol and Shares
+                    
+                    if formatted_data:
+                        print(tabulate(formatted_data, headers=["Symbol", "Shares"]))
+                        # Calculate and display total value
+                        total_value = stock_list.compute_stock_list_value(current_user_id, stocklist_id)
+                        if total_value is not None:
+                            print(f"\nTotal Stock List Value: ${total_value:.2f}")
+                    else:
+                        print("This stock list is empty.")
                 else:
                     print(f"\n❌ Stock list {stocklist_id} not found or you don't have permission to view it.")
             except ValueError:
@@ -442,7 +458,7 @@ def stocklist_menu():
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 10.")
+            print("\n❌ Invalid choice. Please enter a number between 1 and 12.")
             pause()
 
 def friends_menu():
@@ -568,7 +584,7 @@ def stock_info_menu():
         print("3. Fetch Latest Stock Info For All Stocks (Yahoo Finance)")
         print("4. Return to Main Menu")
         
-        choice = input("\nEnter your choice (1-3): ")
+        choice = input("\nEnter your choice (1-4): ")
         
         if choice == '1':
             # View stock info
@@ -616,8 +632,50 @@ def stock_info_menu():
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 3.")
+            print("\n❌ Invalid choice. Please enter a number between 1 and 4.")
             pause()
+
+def delete_account_menu():
+    """Handle account deletion with confirmation"""
+    global current_user_id, current_username
+    
+    print_header("Delete Account")
+    print("⚠️ WARNING: This action cannot be undone!")
+    print("All your data will be permanently deleted, including:")
+    print("- Your profile")
+    print("- All your portfolios")
+    print("- All your stock lists")
+    print("- All your reviews")
+    print("- All your friend connections")
+    
+    confirm = input("\nAre you sure you want to delete your account? (yes/no): ").lower()
+    
+    if confirm == 'yes':
+        max_attempts = 3
+        attempts = 0
+        while attempts < max_attempts:
+            password = input("Please enter your password to confirm: ")
+            
+            # Verify password
+            result = auth.login(current_username, password)
+            if result and result[0] == current_user_id:
+                if auth.delete_account(current_user_id):
+                    print("\n✅ Account deleted successfully.")
+                    current_user_id = None
+                    current_username = None
+                else:
+                    print("\n❌ Failed to delete account. Please try again later.")
+                break
+            else:
+                attempts += 1
+                if attempts < max_attempts:
+                    print(f"\n❌ Incorrect password. {max_attempts - attempts} attempts remaining.")
+                else:
+                    print("\n❌ Too many incorrect attempts. Account deletion cancelled.")
+    else:
+        print("\nAccount deletion cancelled.")
+    
+    pause()
 
 def setup_db(load_stock_history = False):
     try:
@@ -642,7 +700,8 @@ def setup_db(load_stock_history = False):
     if not load_stock_history:
         return
     try:
-        cursor.execute(load_stock_history_from_csv)
+        #cursor.execute(load_stock_history_from_csv)
+        load_stock_history_from_local_fast(conn)
         cursor.execute(copy_symbols)
         conn.commit()
         cursor.close()
@@ -667,7 +726,8 @@ def setup_db(load_stock_history = False):
 
 def main():
 
-    setup_db(False)
+    setup_db(True)
+    pause()
     
     print_header("Welcome to Stock Social Network - A CSCC43 Project")
     print("A command-line social network application for stock investors")

@@ -306,4 +306,45 @@ class StockList:
         cursor.execute(query, (user_id, user_id))
         stock_lists = cursor.fetchall()
         cursor.close()
-        return stock_lists 
+        return stock_lists
+
+    def compute_stock_list_value(self, user_id, stocklist_id):
+        """
+        Returns the total current market value of the given stock list,
+        calculated using the latest stock prices.
+        """
+        cursor = self.conn.cursor()
+        
+        # Check if user has access to this stock list
+        accessible_stock_lists = self.view_accessible_stock_lists(user_id)
+        if not any([lst[0] == stocklist_id for lst in accessible_stock_lists]):
+            cursor.close()
+            return None
+            
+        # Calculate stock value using latest prices
+        value_query = '''
+            SELECT COALESCE(SUM(sls.num_shares * sh.close), 0)
+              FROM StockListStocks sls
+              JOIN (
+                SELECT symbol, MAX(timestamp) AS max_time
+                  FROM (SELECT symbol, timestamp FROM StocksHistory 
+                          UNION 
+                        SELECT symbol, timestamp FROM DailyStockInfo) combined
+                 GROUP BY symbol
+              ) AS latest ON sls.symbol = latest.symbol
+              JOIN (SELECT symbol, timestamp, close FROM StocksHistory 
+                      UNION 
+                    SELECT symbol, timestamp, close FROM DailyStockInfo) sh 
+                ON sh.symbol = sls.symbol
+               AND sh.timestamp = latest.max_time
+             WHERE sls.stocklist_id = %s
+        '''
+        cursor.execute(value_query, (stocklist_id,))
+        result = cursor.fetchone()
+        if not result:
+            cursor.close()
+            return None
+        
+        stock_value = d2f(result[0])
+        cursor.close()
+        return stock_value 

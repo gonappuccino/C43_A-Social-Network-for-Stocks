@@ -1,6 +1,6 @@
 import psycopg2
 from queries.utils import decimal_to_float as d2f
-
+import re
 class Auth:
     conn = psycopg2.connect(
         host='34.130.75.185',
@@ -10,6 +10,14 @@ class Auth:
     )
 
     def register(self, username, password, email):
+        # Verify username, password and email are valid
+        if not username or len(username) == 0:
+            return False
+        if not password or len(password) == 0:
+            return False
+        if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            return False
+        
         # Check if username and email are unique
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM Users WHERE username=%s OR email=%s", (username, email))
@@ -30,4 +38,27 @@ class Auth:
         return user_id
     
     def logout(self):
-        return True 
+        return True
+
+    def delete_account(self, user_id):
+        """
+        Delete a user account and all associated data.
+        Due to CASCADE constraints, this will automatically delete:
+        - All friend requests
+        - All stock lists owned by the user
+        - All portfolios owned by the userS
+        - All portfolio transactions
+        - All reviews created by the user
+        - All stock list access permissions
+        """
+        try:
+            cursor = self.conn.cursor()
+            # Delete the user (cascade will handle related data)
+            cursor.execute("DELETE FROM Users WHERE user_id = %s", (user_id,))
+            self.conn.commit()
+            cursor.close()
+            return True
+        except psycopg2.Error as e:
+            print(f"Error deleting account: {e}")
+            self.conn.rollback()
+            return False 
