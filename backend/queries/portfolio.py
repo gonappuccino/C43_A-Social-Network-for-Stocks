@@ -458,6 +458,28 @@ class Portfolio:
         if not portfolio_stocks:
             cursor.close()
             return None
+            
+        # Check if SPY data is available for the date range
+        spy_check_query = '''
+            SELECT COUNT(*)
+            FROM (
+                SELECT timestamp
+                FROM DailyStockInfo
+                WHERE symbol = 'SPY' AND timestamp BETWEEN %s AND %s
+            ) spy_data
+        '''
+        cursor.execute(spy_check_query, (start_date, end_date))
+        spy_count = cursor.fetchone()[0]
+        
+        # If SPY data is missing, fetch it
+        if spy_count < 10:  # Require at least 10 data points for meaningful analysis
+            from queries.stock_data import StockData
+            stock_data = StockData()
+            fetched_count = stock_data.fetch_and_store_spy_info_between_dates(start_date, end_date)
+            if fetched_count is None or fetched_count == 0:
+                cursor.close()
+                return None  # Could not fetch SPY data
+            
 
         # Calculate daily returns, CV, and Beta for each stock
         analytics_query = '''
@@ -467,13 +489,13 @@ class Portfolio:
                     timestamp,
                     (close - LAG(close) OVER (PARTITION BY symbol ORDER BY timestamp)) / LAG(close) OVER (PARTITION BY symbol ORDER BY timestamp) as daily_return
                 FROM (
-                    SELECT symbol, timestamp, close
+                    (SELECT symbol, timestamp, close
                     FROM StocksHistory
-                    WHERE symbol IN %s AND timestamp BETWEEN %s AND %s
+                    WHERE symbol IN %s AND timestamp BETWEEN %s AND %s)
                     UNION ALL
-                    SELECT symbol, timestamp, close
+                    (SELECT symbol, timestamp, close
                     FROM DailyStockInfo
-                    WHERE symbol IN %s AND timestamp BETWEEN %s AND %s
+                    WHERE symbol IN %s AND timestamp BETWEEN %s AND %s)
                 ) combined
             ),
             spy_returns AS (
@@ -482,20 +504,16 @@ class Portfolio:
                     (close - LAG(close) OVER (ORDER BY timestamp)) / LAG(close) OVER (ORDER BY timestamp) as spy_return
                 FROM (
                     SELECT timestamp, close
-                    FROM StocksHistory
-                    WHERE symbol = 'SPY' AND timestamp BETWEEN %s AND %s
-                    UNION ALL
-                    SELECT timestamp, close
                     FROM DailyStockInfo
                     WHERE symbol = 'SPY' AND timestamp BETWEEN %s AND %s
-                ) combined
+                ) spy_data
             ),
             stock_stats AS (
                 SELECT 
                     dr.symbol,
                     AVG(dr.daily_return) as mean_return,
                     STDDEV(dr.daily_return) as std_return,
-                    COVARIANCE(dr.daily_return, sr.spy_return) as cov_with_spy,
+                    (AVG(dr.daily_return * sr.spy_return) - AVG(dr.daily_return) * AVG(sr.spy_return)) as cov_with_spy,
                     VARIANCE(sr.spy_return) as spy_variance
                 FROM daily_returns dr
                 JOIN spy_returns sr ON dr.timestamp = sr.timestamp
@@ -506,7 +524,7 @@ class Portfolio:
                 SELECT 
                     a.symbol as symbol1,
                     b.symbol as symbol2,
-                    COVARIANCE(a.daily_return, b.daily_return) / 
+                    (AVG(a.daily_return * b.daily_return) - AVG(a.daily_return) * AVG(b.daily_return)) / 
                     (STDDEV(a.daily_return) * STDDEV(b.daily_return)) as correlation
                 FROM daily_returns a
                 JOIN daily_returns b ON a.timestamp = b.timestamp
@@ -517,7 +535,7 @@ class Portfolio:
                 SELECT 
                     a.symbol as symbol1,
                     b.symbol as symbol2,
-                    COVARIANCE(a.daily_return, b.daily_return) as covariance
+                    (AVG(a.daily_return * b.daily_return) - AVG(a.daily_return) * AVG(b.daily_return)) as covariance
                 FROM daily_returns a
                 JOIN daily_returns b ON a.timestamp = b.timestamp
                 WHERE a.symbol <= b.symbol
@@ -535,34 +553,20 @@ class Portfolio:
                     WHEN ss.spy_variance = 0 THEN 0 
                     ELSE ss.cov_with_spy / ss.spy_variance 
                 END as beta,
-                COALESCE(
-                    json_agg(
-                        json_build_object(
-                            'symbol2', cm.symbol2,
-                            'correlation', cm.correlation
-                        )
-                    ) FILTER (WHERE cm.symbol2 IS NOT NULL),
-                    '[]'::json
-                ) as correlations,
-                COALESCE(
-                    json_agg(
-                        json_build_object(
-                            'symbol2', covm.symbol2,
-                            'covariance', covm.covariance
-                        )
-                    ) FILTER (WHERE covm.symbol2 IS NOT NULL),
-                    '[]'::json
-                ) as covariances
+                cm.symbol2,
+                cm.correlation,
+                covm.symbol2 as cov_symbol2,
+                covm.covariance
             FROM stock_stats ss
             LEFT JOIN correlation_matrix cm ON ss.symbol = cm.symbol1
             LEFT JOIN covariance_matrix covm ON ss.symbol = covm.symbol1
-            GROUP BY ss.symbol, ss.mean_return, ss.std_return, ss.cov_with_spy, ss.spy_variance
+            ORDER BY ss.symbol, cm.symbol2, covm.symbol2;
         '''
         
         # Prepare parameters for the query
         symbols = tuple(stock[0] for stock in portfolio_stocks)
         params = (symbols, start_date, end_date, symbols, start_date, end_date,
-                 start_date, end_date, start_date, end_date)
+                 start_date, end_date)
         
         cursor.execute(analytics_query, params)
         analytics_data = cursor.fetchall()
@@ -576,38 +580,42 @@ class Portfolio:
         correlation_matrix = {}
         covariance_matrix = {}
         
+        current_symbol = None
         for row in analytics_data:
             symbol = row[0]
             cv = float(row[3])
             beta = float(row[4])
-            correlations = row[5]
-            covariances = row[6]
+            corr_symbol2 = row[5]
+            correlation = float(row[6]) if row[6] is not None else 0
+            cov_symbol2 = row[7]
+            covariance = float(row[8]) if row[8] is not None else 0
             
-            # Add stock analytics
-            stock_analytics.append({
-                'symbol': symbol,
-                'shares': next(stock[1] for stock in portfolio_stocks if stock[0] == symbol),
-                'coefficient_of_variation': cv,
-                'beta': beta
-            })
+            # Add stock analytics if we haven't seen this symbol before
+            if symbol != current_symbol:
+                current_symbol = symbol
+                stock_analytics.append({
+                    'symbol': symbol,
+                    'shares': next(stock[1] for stock in portfolio_stocks if stock[0] == symbol),
+                    'coefficient_of_variation': cv,
+                    'beta': beta
+                })
+                correlation_matrix[symbol] = {symbol: 1.0}  # Self-correlation is always 1
+                covariance_matrix[symbol] = {symbol: covariance}  # Self-covariance
             
-            # Build correlation matrix
-            correlation_matrix[symbol] = {symbol: 1.0}  # Self-correlation is always 1
-            for corr in correlations:
-                correlation_matrix[symbol][corr['symbol2']] = float(corr['correlation'])
-                if corr['symbol2'] not in correlation_matrix:
-                    correlation_matrix[corr['symbol2']] = {}
-                correlation_matrix[corr['symbol2']][symbol] = float(corr['correlation'])
-                correlation_matrix[corr['symbol2']][corr['symbol2']] = 1.0
+            # Add correlation and covariance data if available
+            if corr_symbol2 is not None:
+                correlation_matrix[symbol][corr_symbol2] = correlation
+                if corr_symbol2 not in correlation_matrix:
+                    correlation_matrix[corr_symbol2] = {}
+                correlation_matrix[corr_symbol2][symbol] = correlation
+                correlation_matrix[corr_symbol2][corr_symbol2] = 1.0
             
-            # Build covariance matrix
-            covariance_matrix[symbol] = {symbol: float(covariances[0]['covariance'])}  # Self-covariance
-            for cov in covariances[1:]:  # Skip the first one as it's self-covariance
-                covariance_matrix[symbol][cov['symbol2']] = float(cov['covariance'])
-                if cov['symbol2'] not in covariance_matrix:
-                    covariance_matrix[cov['symbol2']] = {}
-                covariance_matrix[cov['symbol2']][symbol] = float(cov['covariance'])
-                covariance_matrix[cov['symbol2']][cov['symbol2']] = float(cov['covariance'])
+            if cov_symbol2 is not None:
+                covariance_matrix[symbol][cov_symbol2] = covariance
+                if cov_symbol2 not in covariance_matrix:
+                    covariance_matrix[cov_symbol2] = {}
+                covariance_matrix[cov_symbol2][symbol] = covariance
+                covariance_matrix[cov_symbol2][cov_symbol2] = covariance
         
         cursor.close()
         return {

@@ -9,6 +9,7 @@ from queries.setup import setup_queries, load_stock_history_from_local, load_sto
 import os
 import sys
 from tabulate import tabulate 
+import datetime
 
 # Database connection parameters
 DB_HOST = '34.130.75.185'
@@ -24,7 +25,6 @@ friends = Friends()
 stock_data = StockData()
 reviews = Reviews()
 
-# Global variables
 current_user_id = None
 current_username = None
 
@@ -134,9 +134,10 @@ def portfolio_menu():
         print("6. Buy Stock Shares")
         print("7. Sell Stock Shares")
         print("8. View Portfolio Transactions")
-        print("9. Return to Main Menu")
+        print("9. View Portfolio Analytics")
+        print("10. Return to Main Menu")
         
-        choice = input("\nEnter your choice (1-9): ")
+        choice = input("\nEnter your choice (1-10): ")
         
         if choice == '1':
             # View all portfolios for current user
@@ -255,11 +256,82 @@ def portfolio_menu():
             pause()
             
         elif choice == '9':
+            view_portfolio_analytics()
+            
+        elif choice == '10':
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 9.")
+            print("\n❌ Invalid choice. Please enter a number between 1 and 10.")
             pause()
+
+def view_portfolio_analytics():
+    """Display portfolio analytics including CV, Beta, and correlation/covariance matrices"""
+    try:
+        portfolio_id = int(input("Enter portfolio ID: "))
+        
+        # Get date range
+        print("\nEnter date range for analysis (YYYY-MM-DD format)")
+        print("Leave blank for default range (1 year)")
+        start_date_str = input("Start date: ").strip()
+        end_date_str = input("End date: ").strip()
+        
+        # Parse dates if provided
+        start_date = None
+        end_date = None
+        if start_date_str:
+            start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        if end_date_str:
+            end_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        
+        # Get analytics
+        analytics = portfolio.compute_portfolio_analytics(current_user_id, portfolio_id, start_date, end_date)
+        
+        if not analytics:
+            print("\n❌ No analytics available. Make sure the portfolio exists and contains stocks.")
+            pause()
+            return
+            
+        # Display stock analytics
+        print_header("Portfolio Analytics")
+        print("\nStock Analytics:")
+        headers = ["Symbol", "Shares", "Coefficient of Variation", "Beta"]
+        data = [[
+            stock['symbol'],
+            stock['shares'],
+            f"{stock['coefficient_of_variation']:.4f}",
+            f"{stock['beta']:.4f}"
+        ] for stock in analytics['stock_analytics']]
+        print(tabulate(data, headers=headers, tablefmt="grid"))
+        
+        # Display correlation matrix
+        print("\nCorrelation Matrix:")
+        symbols = sorted(analytics['correlation_matrix'].keys())
+        headers = ["Symbol"] + symbols
+        data = []
+        for symbol in symbols:
+            row = [symbol]
+            for other_symbol in symbols:
+                row.append(f"{analytics['correlation_matrix'][symbol].get(other_symbol, 0):.4f}")
+            data.append(row)
+        print(tabulate(data, headers=headers, tablefmt="grid"))
+        
+        # Display covariance matrix
+        print("\nCovariance Matrix:")
+        data = []
+        for symbol in symbols:
+            row = [symbol]
+            for other_symbol in symbols:
+                row.append(f"{analytics['covariance_matrix'][symbol].get(other_symbol, 0):.4f}")
+            data.append(row)
+        print(tabulate(data, headers=headers, tablefmt="grid"))
+        
+    except ValueError as e:
+        print(f"\n❌ Invalid input: {e}")
+    except Exception as e:
+        print(f"\n❌ Error computing analytics: {e}")
+    
+    pause()
 
 def stocklist_menu():
     while True:

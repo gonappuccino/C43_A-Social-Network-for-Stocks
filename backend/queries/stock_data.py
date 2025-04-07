@@ -159,6 +159,77 @@ class StockData:
                 results[symbol] = None
         
         return results
+    
+    def fetch_and_store_spy_info_between_dates(self, start_date, end_date):
+        """
+        Fetch SPY (S&P 500 ETF) data from Yahoo Finance between the specified dates
+        and store it in the database.
+        
+        Args:
+            start_date: Start date for data fetch (datetime.date)
+            end_date: End date for data fetch (datetime.date)
+            
+        Returns:
+            Number of days inserted/updated, or None if error
+        """
+        cursor = self.conn.cursor()
+        
+        try:
+            # Format dates for Yahoo Finance API
+            start_date_str = start_date.strftime('%Y-%m-%d')
+            end_date_str = end_date.strftime('%Y-%m-%d')
+            
+            # Fetch SPY data from Yahoo Finance
+            ticker = yf.Ticker("SPY")
+            data = ticker.history(start=start_date_str, end=end_date_str)
+            
+            if data.empty:
+                cursor.close()
+                return 0  # No data available
+            
+            # Insert all fetched days
+            inserted_count = 0
+            for index, row in data.iterrows():
+                # Convert index to date object
+                date = index.date() if hasattr(index, 'date') else index.to_pydatetime().date()
+                
+                open_price = float(row["Open"])
+                high_price = float(row["High"])
+                low_price = float(row["Low"])
+                close_price = float(row["Close"])
+                volume = int(row["Volume"])
+                
+                # First, ensure SPY exists in the Stocks table
+                ensure_spy_query = '''
+                    INSERT INTO Stocks (symbol)
+                    VALUES ('SPY')
+                    ON CONFLICT (symbol) DO NOTHING;
+                '''
+                cursor.execute(ensure_spy_query)
+                
+                # Insert into DailyStockInfo
+                query = '''
+                    INSERT INTO DailyStockInfo (symbol, timestamp, open, high, low, close, volume)
+                    VALUES ('SPY', %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (symbol, timestamp) 
+                    DO UPDATE SET open = EXCLUDED.open,
+                                high = EXCLUDED.high,
+                                low = EXCLUDED.low,
+                                close = EXCLUDED.close,
+                                volume = EXCLUDED.volume;
+                '''
+                cursor.execute(query, (date, open_price, high_price, low_price, close_price, volume))
+                inserted_count += 1
+            
+            self.conn.commit()
+            cursor.close()
+            return inserted_count
+            
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Error fetching SPY data: {e}")
+            cursor.close()
+            return None
 
     def view_stock_info(self, symbol, period='all', graph=False):
         """

@@ -244,11 +244,13 @@ def load_stock_history_from_local_fast(conn):
         cursor.close()
 
 
-# Now copy symbols from StocksHistory to Stockss
+# Now copy symbols from StocksHistory to Stocks + spy for stock analytics 
 copy_symbols = '''
     INSERT INTO Stocks (symbol)
-    SELECT DISTINCT symbol
-    FROM StocksHistory
+    (SELECT DISTINCT symbol
+    FROM StocksHistory)
+    UNION
+    (SELECT 'SPY' AS symbol)
     ON CONFLICT (symbol) DO NOTHING;
 '''
 
