@@ -145,9 +145,12 @@ class Reviews:
             cursor.close()
             return []  # user doesn't have access to this stock list
         
-        # get reviews
-        query = '''
-            SELECT r.review_id,
+        # can only see all reviews if the stock list is public or the user is the owner
+        # Otherwise, if the stocklist was shared with the user, only see reviews made by that user (who should be a friend of the owner)
+        if is_public or list_owner == user_id:
+            # get reviews
+            query = '''
+                SELECT r.review_id,
                 r.user_id,
                 r.review_text,
                 r.created_at,
@@ -155,8 +158,27 @@ class Reviews:
             FROM Reviews r
             WHERE r.stocklist_id = %s
             ORDER BY r.created_at ASC;
-        '''
-        cursor.execute(query, (stocklist_id,))
-        results = cursor.fetchall()
-        cursor.close()
-        return results 
+            '''
+            cursor.execute(query, (stocklist_id,))
+            results = cursor.fetchall()
+            cursor.close()
+            return results
+        elif access_role == 'shared':
+            # Only get reviews made by the friend on the stock list
+            query = '''
+                SELECT r.review_id,
+                r.user_id,
+                r.review_text,
+                r.created_at,
+                r.updated_at
+                FROM Reviews r
+                WHERE r.user_id = %s AND r.stocklist_id = %s
+                ORDER BY r.created_at ASC;
+            '''
+            cursor.execute(query, (user_id, stocklist_id))
+            results = cursor.fetchall()
+            cursor.close()
+            return results
+        else:
+            cursor.close()
+            return []

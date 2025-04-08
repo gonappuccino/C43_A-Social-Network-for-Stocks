@@ -1,6 +1,8 @@
 import psycopg2
 from queries.utils import decimal_to_float as d2f
 import datetime
+import json
+from typing import Optional, Dict
 
 class Portfolio:
     conn = psycopg2.connect(
@@ -409,22 +411,206 @@ class Portfolio:
         cursor.close()
         return portfolios 
 
-    def compute_portfolio_analytics(self, user_id, portfolio_id, start_date=None, end_date=None):
+    def compute_portfolio_analytics(self, user_id: int, portfolio_id: int, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Optional[Dict]:
         """
-        Compute portfolio analytics including coefficient of variation, Beta, and covariance/correlation matrix.
-        All calculations are performed in SQL.
+        Compute portfolio analytics including coefficient of variation, Beta, and correlation/covariance matrices.
+        Uses caching to improve performance for repeated queries.
         
         Args:
-            user_id: The user ID
-            portfolio_id: The portfolio ID
-            start_date: Start date for analysis (default: 1 year ago)
-            end_date: End date for analysis (default: today)
+            user_id: The ID of the user requesting analytics
+            portfolio_id: The ID of the portfolio to analyze
+            start_date: Optional start date for analysis (YYYY-MM-DD)
+            end_date: Optional end date for analysis (YYYY-MM-DD)
             
         Returns:
-            Dictionary containing:
-            - stock_analytics: List of dicts with CV and Beta for each stock
-            - correlation_matrix: List of lists with correlation coefficients
-            - covariance_matrix: List of lists with covariance values
+            Dictionary containing analytics results or None if error occurs
+        """
+        try:
+            with self.conn.cursor() as cursor:
+                # Check if user has access to portfolio
+                cursor.execute("""
+                    SELECT 1 FROM Portfolios 
+                    WHERE portfolio_id = %s AND user_id = %s
+                """, (portfolio_id, user_id))
+                if not cursor.fetchone():
+                    return None
+
+                # If no dates provided, use entire history
+                if not start_date or not end_date:
+                    cursor.execute("""
+                        SELECT MIN(timestamp), MAX(timestamp) 
+                        FROM StocksHistory
+                    """)
+                    min_date, max_date = cursor.fetchone()
+                    start_date = min_date.strftime('%Y-%m-%d')
+                    end_date = max_date.strftime('%Y-%m-%d')
+
+                # Check cache first
+                cursor.execute("""
+                    SELECT analytics_data, last_updated 
+                    FROM PortfolioAnalyticsCache
+                    WHERE portfolio_id = %s 
+                    AND start_date = %s 
+                    AND end_date = %s
+                """, (portfolio_id, start_date, end_date))
+                
+                cached_result = cursor.fetchone()
+                if cached_result:
+                    return cached_result[0]
+
+                # If not in cache, compute analytics
+                # NOTE: Covariance computed with E(XY) - E(X)E(Y)
+                # NOTE: when portfolio has only 1 stock, coefficient of variation is undefined, we use NULLIF to return None
+                analytics_query = """
+                    WITH daily_returns AS (
+                        SELECT 
+                            sh.symbol,
+                            sh.timestamp,
+                            (sh.close - LAG(sh.close) OVER (PARTITION BY sh.symbol ORDER BY sh.timestamp)) / 
+                            LAG(sh.close) OVER (PARTITION BY sh.symbol ORDER BY sh.timestamp) as daily_return
+                        FROM (
+                            SELECT symbol, timestamp, close FROM StocksHistory
+                            UNION ALL
+                            SELECT symbol, timestamp, close FROM DailyStockInfo
+                        ) sh
+                        WHERE sh.timestamp BETWEEN %s AND %s
+                    ),
+                    spy_returns AS (
+                        SELECT 
+                            timestamp,
+                            (close - LAG(close) OVER (ORDER BY timestamp)) / 
+                            LAG(close) OVER (ORDER BY timestamp) as daily_return
+                        FROM (
+                            SELECT timestamp, close FROM StocksHistory WHERE symbol = 'SPY'
+                            UNION ALL
+                            SELECT timestamp, close FROM DailyStockInfo WHERE symbol = 'SPY'
+                        ) spy
+                        WHERE timestamp BETWEEN %s AND %s
+                    ),
+                    stock_stats AS (
+                        SELECT 
+                            dr.symbol,
+                            AVG(dr.daily_return) as mean_return,
+                            STDDEV(dr.daily_return) as std_dev,
+                            AVG(dr.daily_return * sr.daily_return) - 
+                            AVG(dr.daily_return) * AVG(sr.daily_return) as cov_with_spy,
+                            VARIANCE(sr.daily_return) as spy_variance
+                        FROM daily_returns dr
+                        JOIN spy_returns sr ON dr.timestamp = sr.timestamp
+                        GROUP BY dr.symbol
+                    ),
+                    correlation_matrix AS (
+                        SELECT 
+                            dr1.symbol as symbol1,
+                            dr2.symbol as symbol2,
+                            (AVG(dr1.daily_return * dr2.daily_return) - 
+                             AVG(dr1.daily_return) * AVG(dr2.daily_return)) / 
+                            (STDDEV(dr1.daily_return) * STDDEV(dr2.daily_return)) as correlation
+                        FROM daily_returns dr1
+                        JOIN daily_returns dr2 ON dr1.timestamp = dr2.timestamp
+                        WHERE dr1.symbol < dr2.symbol
+                        GROUP BY dr1.symbol, dr2.symbol
+                    ),
+                    covariance_matrix AS (
+                        SELECT 
+                            dr1.symbol as symbol1,
+                            dr2.symbol as symbol2,
+                            AVG(dr1.daily_return * dr2.daily_return) - 
+                            AVG(dr1.daily_return) * AVG(dr2.daily_return) as covariance
+                        FROM daily_returns dr1
+                        JOIN daily_returns dr2 ON dr1.timestamp = dr2.timestamp
+                        GROUP BY dr1.symbol, dr2.symbol
+                    )
+                    SELECT 
+                        ss.symbol,
+                        ss.std_dev / NULLIF(ABS(ss.mean_return), 0) as coefficient_of_variation,
+                        ss.cov_with_spy / NULLIF(ss.spy_variance, 0) as beta,
+                        cm.symbol2 as corr_symbol2,
+                        cm.correlation,
+                        covm.symbol2 as cov_symbol2,
+                        covm.covariance
+                    FROM stock_stats ss
+                    LEFT JOIN correlation_matrix cm ON ss.symbol = cm.symbol1
+                    LEFT JOIN covariance_matrix covm ON ss.symbol = covm.symbol1
+                    ORDER BY ss.symbol;
+                """
+                
+                cursor.execute(analytics_query, (start_date, end_date, start_date, end_date))
+                results = cursor.fetchall()
+                
+                if not results:
+                    return None
+
+                # Process results into structured format
+                stock_analytics = []
+                correlation_matrix = {}
+                covariance_matrix = {}
+                
+                for row in results:
+                    symbol = row[0]
+                    cv = float(row[1]) if row[1] is not None else None
+                    beta = float(row[2]) if row[2] is not None else None
+                    
+                    stock_analytics.append({
+                        'symbol': symbol,
+                        'coefficient_of_variation': cv,
+                        'beta': beta
+                    })
+                    
+                    if row[3] and row[4]:  # Correlation data
+                        if symbol not in correlation_matrix:
+                            correlation_matrix[symbol] = {}
+                        correlation_matrix[symbol][row[3]] = float(row[4])
+                        if row[3] not in correlation_matrix:
+                            correlation_matrix[row[3]] = {}
+                        correlation_matrix[row[3]][symbol] = float(row[4])
+                    
+                    if row[5] and row[6]:  # Covariance data
+                        if symbol not in covariance_matrix:
+                            covariance_matrix[symbol] = {}
+                        covariance_matrix[symbol][row[5]] = float(row[6])
+                        if row[5] not in covariance_matrix:
+                            covariance_matrix[row[5]] = {}
+                        covariance_matrix[row[5]][symbol] = float(row[6])
+
+                analytics_result = {
+                    'stock_analytics': stock_analytics,
+                    'correlation_matrix': correlation_matrix,
+                    'covariance_matrix': covariance_matrix,
+                    'date_range': {
+                        'start': start_date,
+                        'end': end_date
+                    }
+                }
+
+                # Cache the results
+                cursor.execute("""
+                    INSERT INTO PortfolioAnalyticsCache 
+                        (portfolio_id, start_date, end_date, analytics_data)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (portfolio_id, start_date, end_date) 
+                    DO UPDATE SET 
+                        analytics_data = EXCLUDED.analytics_data,
+                        last_updated = CURRENT_TIMESTAMP
+                """, (portfolio_id, start_date, end_date, json.dumps(analytics_result)))
+
+                return analytics_result
+
+        except Exception as e:
+            print(f"Error computing portfolio analytics: {e}")
+            return None 
+
+    def view_portfolio_history(self, user_id, portfolio_id, period='all'):
+        """
+        Return the historical value of a portfolio over time, calculated using the current holdings.
+        
+        Args:
+            user_id: The ID of the user requesting the history
+            portfolio_id: The ID of the portfolio to analyze
+            period: Time period to filter data ('5d', '1mo', '6mo', '1y', '5y', 'all')
+            
+        Returns:
+            List of tuples containing (timestamp, total_value) ordered by timestamp ascending
         """
         cursor = self.conn.cursor()
         
@@ -435,191 +621,97 @@ class Portfolio:
                 WHERE portfolio_id = %s AND user_id = %s
         '''
         cursor.execute(is_owner_query, (portfolio_id, user_id))
-        is_owner = cursor.fetchone()
-        if not is_owner:
+        if not cursor.fetchone():
             cursor.close()
             return None
             
-        # Set default dates if not provided
-        if not end_date:
-            end_date = datetime.date.today()
-        if not start_date:
-            start_date = end_date - datetime.timedelta(days=365)
-            
-        # Get all stocks in portfolio
-        stocks_query = '''
-            SELECT DISTINCT symbol, num_shares
+        # Get current portfolio holdings
+        holdings_query = '''
+            SELECT symbol, num_shares
             FROM PortfolioStocks
             WHERE portfolio_id = %s
         '''
-        cursor.execute(stocks_query, (portfolio_id,))
-        portfolio_stocks = cursor.fetchall()
+        cursor.execute(holdings_query, (portfolio_id,))
+        holdings = cursor.fetchall()
         
-        if not portfolio_stocks:
+        if not holdings:
             cursor.close()
             return None
             
-        # Check if SPY data is available for the date range
-        spy_check_query = '''
-            SELECT COUNT(*)
-            FROM (
-                SELECT timestamp
-                FROM DailyStockInfo
-                WHERE symbol = 'SPY' AND timestamp BETWEEN %s AND %s
-            ) spy_data
-        '''
-        cursor.execute(spy_check_query, (start_date, end_date))
-        spy_count = cursor.fetchone()[0]
-        
-        # If SPY data is missing, fetch it
-        if spy_count < 10:  # Require at least 10 data points for meaningful analysis
-            from queries.stock_data import StockData
-            stock_data = StockData()
-            fetched_count = stock_data.fetch_and_store_spy_info_between_dates(start_date, end_date)
-            if fetched_count is None or fetched_count == 0:
-                cursor.close()
-                return None  # Could not fetch SPY data
+        # Get cash balance
+        cash_balance = self.get_cash_balance(portfolio_id, user_id)
+        if cash_balance is None:
+            cursor.close()
+            return None
             
-
-        # Calculate daily returns, CV, and Beta for each stock
-        analytics_query = '''
-            WITH daily_returns AS (
-                SELECT 
-                    symbol,
-                    timestamp,
-                    (close - LAG(close) OVER (PARTITION BY symbol ORDER BY timestamp)) / LAG(close) OVER (PARTITION BY symbol ORDER BY timestamp) as daily_return
+        # Get the most recent date from DailyStockInfo or StocksHistory
+        recent_date_query = '''
+            SELECT MAX(timestamp) 
+            FROM (
+                SELECT timestamp FROM DailyStockInfo
+                UNION
+                SELECT timestamp FROM StocksHistory
+            ) all_dates;
+        '''
+        cursor.execute(recent_date_query)
+        latest_date = cursor.fetchone()[0]
+        
+        if not latest_date:
+            cursor.close()
+            return None
+            
+        # Calculate the start date based on period
+        if period == '5d':
+            start_date = latest_date - datetime.timedelta(days=5)
+        elif period == '1mo':
+            start_date = latest_date - datetime.timedelta(days=30)
+        elif period == '6mo':
+            start_date = latest_date - datetime.timedelta(days=180)
+        elif period == '1y':
+            start_date = latest_date - datetime.timedelta(days=365)
+        elif period == '5y':
+            start_date = latest_date - datetime.timedelta(days=5*365)
+        elif period == 'all':
+            start_date = datetime.date(1900, 1, 1)
+        else:
+            cursor.close()
+            return None
+            
+        # Get historical data for all stocks in the portfolio
+        history_query = '''
+            WITH portfolio_dates AS (
+                SELECT DISTINCT timestamp
                 FROM (
-                    (SELECT symbol, timestamp, close
-                    FROM StocksHistory
-                    WHERE symbol IN %s AND timestamp BETWEEN %s AND %s)
-                    UNION ALL
-                    (SELECT symbol, timestamp, close
-                    FROM DailyStockInfo
-                    WHERE symbol IN %s AND timestamp BETWEEN %s AND %s)
-                ) combined
+                    SELECT timestamp FROM StocksHistory
+                    UNION
+                    SELECT timestamp FROM DailyStockInfo
+                ) all_dates
+                WHERE timestamp >= %s
             ),
-            spy_returns AS (
+            stock_values AS (
                 SELECT 
-                    timestamp,
-                    (close - LAG(close) OVER (ORDER BY timestamp)) / LAG(close) OVER (ORDER BY timestamp) as spy_return
-                FROM (
-                    SELECT timestamp, close
-                    FROM DailyStockInfo
-                    WHERE symbol = 'SPY' AND timestamp BETWEEN %s AND %s
-                ) spy_data
-            ),
-            stock_stats AS (
-                SELECT 
-                    dr.symbol,
-                    AVG(dr.daily_return) as mean_return,
-                    STDDEV(dr.daily_return) as std_return,
-                    (AVG(dr.daily_return * sr.spy_return) - AVG(dr.daily_return) * AVG(sr.spy_return)) as cov_with_spy,
-                    VARIANCE(sr.spy_return) as spy_variance
-                FROM daily_returns dr
-                JOIN spy_returns sr ON dr.timestamp = sr.timestamp
-                WHERE dr.daily_return IS NOT NULL AND sr.spy_return IS NOT NULL
-                GROUP BY dr.symbol
-            ),
-            correlation_matrix AS (
-                SELECT 
-                    a.symbol as symbol1,
-                    b.symbol as symbol2,
-                    (AVG(a.daily_return * b.daily_return) - AVG(a.daily_return) * AVG(b.daily_return)) / 
-                    (STDDEV(a.daily_return) * STDDEV(b.daily_return)) as correlation
-                FROM daily_returns a
-                JOIN daily_returns b ON a.timestamp = b.timestamp
-                WHERE a.symbol < b.symbol
-                GROUP BY a.symbol, b.symbol
-            ),
-            covariance_matrix AS (
-                SELECT 
-                    a.symbol as symbol1,
-                    b.symbol as symbol2,
-                    (AVG(a.daily_return * b.daily_return) - AVG(a.daily_return) * AVG(b.daily_return)) as covariance
-                FROM daily_returns a
-                JOIN daily_returns b ON a.timestamp = b.timestamp
-                WHERE a.symbol <= b.symbol
-                GROUP BY a.symbol, b.symbol
+                    pd.timestamp,
+                    ps.symbol,
+                    ps.num_shares,
+                    COALESCE(sh.close, dsi.close) as close_price
+                FROM portfolio_dates pd
+                CROSS JOIN (
+                    SELECT symbol, num_shares
+                    FROM PortfolioStocks
+                    WHERE portfolio_id = %s
+                ) ps
+                LEFT JOIN StocksHistory sh ON sh.symbol = ps.symbol AND sh.timestamp = pd.timestamp
+                LEFT JOIN DailyStockInfo dsi ON dsi.symbol = ps.symbol AND dsi.timestamp = pd.timestamp
             )
             SELECT 
-                ss.symbol,
-                ss.mean_return,
-                ss.std_return,
-                CASE 
-                    WHEN ss.mean_return = 0 THEN 0 
-                    ELSE ss.std_return / ss.mean_return 
-                END as coefficient_of_variation,
-                CASE 
-                    WHEN ss.spy_variance = 0 THEN 0 
-                    ELSE ss.cov_with_spy / ss.spy_variance 
-                END as beta,
-                cm.symbol2,
-                cm.correlation,
-                covm.symbol2 as cov_symbol2,
-                covm.covariance
-            FROM stock_stats ss
-            LEFT JOIN correlation_matrix cm ON ss.symbol = cm.symbol1
-            LEFT JOIN covariance_matrix covm ON ss.symbol = covm.symbol1
-            ORDER BY ss.symbol, cm.symbol2, covm.symbol2;
+                timestamp,
+                SUM(num_shares * close_price) + %s as total_value
+            FROM stock_values
+            GROUP BY timestamp
+            ORDER BY timestamp ASC;
         '''
         
-        # Prepare parameters for the query
-        symbols = tuple(stock[0] for stock in portfolio_stocks)
-        params = (symbols, start_date, end_date, symbols, start_date, end_date,
-                 start_date, end_date)
-        
-        cursor.execute(analytics_query, params)
-        analytics_data = cursor.fetchall()
-        
-        if not analytics_data:
-            cursor.close()
-            return None
-            
-        # Process the results
-        stock_analytics = []
-        correlation_matrix = {}
-        covariance_matrix = {}
-        
-        current_symbol = None
-        for row in analytics_data:
-            symbol = row[0]
-            cv = float(row[3])
-            beta = float(row[4])
-            corr_symbol2 = row[5]
-            correlation = float(row[6]) if row[6] is not None else 0
-            cov_symbol2 = row[7]
-            covariance = float(row[8]) if row[8] is not None else 0
-            
-            # Add stock analytics if we haven't seen this symbol before
-            if symbol != current_symbol:
-                current_symbol = symbol
-                stock_analytics.append({
-                    'symbol': symbol,
-                    'shares': next(stock[1] for stock in portfolio_stocks if stock[0] == symbol),
-                    'coefficient_of_variation': cv,
-                    'beta': beta
-                })
-                correlation_matrix[symbol] = {symbol: 1.0}  # Self-correlation is always 1
-                covariance_matrix[symbol] = {symbol: covariance}  # Self-covariance
-            
-            # Add correlation and covariance data if available
-            if corr_symbol2 is not None:
-                correlation_matrix[symbol][corr_symbol2] = correlation
-                if corr_symbol2 not in correlation_matrix:
-                    correlation_matrix[corr_symbol2] = {}
-                correlation_matrix[corr_symbol2][symbol] = correlation
-                correlation_matrix[corr_symbol2][corr_symbol2] = 1.0
-            
-            if cov_symbol2 is not None:
-                covariance_matrix[symbol][cov_symbol2] = covariance
-                if cov_symbol2 not in covariance_matrix:
-                    covariance_matrix[cov_symbol2] = {}
-                covariance_matrix[cov_symbol2][symbol] = covariance
-                covariance_matrix[cov_symbol2][cov_symbol2] = covariance
-        
+        cursor.execute(history_query, (start_date, portfolio_id, cash_balance))
+        history = cursor.fetchall()
         cursor.close()
-        return {
-            'stock_analytics': stock_analytics,
-            'correlation_matrix': correlation_matrix,
-            'covariance_matrix': covariance_matrix
-        } 
+        return history 

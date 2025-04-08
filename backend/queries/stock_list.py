@@ -1,6 +1,8 @@
 import psycopg2
 from queries.utils import decimal_to_float as d2f
 from queries.friends import Friends
+import datetime
+
 class StockList:
     conn = psycopg2.connect(
         host='34.130.75.185',
@@ -349,3 +351,108 @@ class StockList:
         stock_value = d2f(result[0])
         cursor.close()
         return stock_value 
+
+    def view_stock_list_history(self, user_id, stocklist_id, period='all'):
+        """
+        Return the historical value of a stock list over time, calculated using the current holdings.
+        
+        Args:
+            user_id: The ID of the user requesting the history
+            stocklist_id: The ID of the stock list to analyze
+            period: Time period to filter data ('5d', '1mo', '6mo', '1y', '5y', 'all')
+            
+        Returns:
+            List of tuples containing (timestamp, total_value) ordered by timestamp ascending
+        """
+        cursor = self.conn.cursor()
+        
+        # Check if user has access to stock list
+        accessible_stock_lists = self.view_accessible_stock_lists(user_id)
+        if not any([lst[0] == stocklist_id for lst in accessible_stock_lists]):
+            cursor.close()
+            return None
+            
+        # Get current stock list holdings
+        holdings_query = '''
+            SELECT symbol, num_shares
+            FROM StockListStocks
+            WHERE stocklist_id = %s
+        '''
+        cursor.execute(holdings_query, (stocklist_id,))
+        holdings = cursor.fetchall()
+        
+        if not holdings:
+            cursor.close()
+            return None
+            
+        # Get the most recent date from DailyStockInfo or StocksHistory
+        recent_date_query = '''
+            SELECT MAX(timestamp) 
+            FROM (
+                SELECT timestamp FROM DailyStockInfo
+                UNION
+                SELECT timestamp FROM StocksHistory
+            ) all_dates;
+        '''
+        cursor.execute(recent_date_query)
+        latest_date = cursor.fetchone()[0]
+        
+        if not latest_date:
+            cursor.close()
+            return None
+            
+        # Calculate the start date based on period
+        if period == '5d':
+            start_date = latest_date - datetime.timedelta(days=5)
+        elif period == '1mo':
+            start_date = latest_date - datetime.timedelta(days=30)
+        elif period == '6mo':
+            start_date = latest_date - datetime.timedelta(days=180)
+        elif period == '1y':
+            start_date = latest_date - datetime.timedelta(days=365)
+        elif period == '5y':
+            start_date = latest_date - datetime.timedelta(days=5*365)
+        elif period == 'all':
+            start_date = datetime.date(1900, 1, 1)
+        else:
+            cursor.close()
+            return None
+            
+        # Get historical data for all stocks in the list
+        history_query = '''
+            WITH list_dates AS (
+                SELECT DISTINCT timestamp
+                FROM (
+                    SELECT timestamp FROM StocksHistory
+                    UNION
+                    SELECT timestamp FROM DailyStockInfo
+                ) all_dates
+                WHERE timestamp >= %s
+            ),
+            stock_values AS (
+                SELECT 
+                    ld.timestamp,
+                    sls.symbol,
+                    sls.num_shares,
+                    COALESCE(sh.close, dsi.close) as close_price
+                FROM list_dates ld
+                CROSS JOIN (
+                    SELECT symbol, num_shares
+                    FROM StockListStocks
+                    WHERE stocklist_id = %s
+                ) sls
+                LEFT JOIN StocksHistory sh ON sh.symbol = sls.symbol AND sh.timestamp = ld.timestamp
+                LEFT JOIN DailyStockInfo dsi ON dsi.symbol = sls.symbol AND dsi.timestamp = ld.timestamp
+            )
+            SELECT 
+                timestamp,
+                SUM(num_shares * close_price) as total_value
+            FROM stock_values
+            GROUP BY timestamp
+            ORDER BY timestamp ASC;
+        '''
+        
+        cursor.execute(history_query, (start_date, stocklist_id))
+        history = cursor.fetchall()
+        cursor.close()
+        return history 

@@ -10,6 +10,8 @@ import os
 import sys
 from tabulate import tabulate 
 import datetime
+import pandas as pd
+import matplotlib.pyplot as plt
 
 # Database connection parameters
 DB_HOST = '34.130.75.185'
@@ -135,9 +137,10 @@ def portfolio_menu():
         print("7. Sell Stock Shares")
         print("8. View Portfolio Transactions")
         print("9. View Portfolio Analytics")
-        print("10. Return to Main Menu")
+        print("10. View Portfolio History")
+        print("11. Return to Main Menu")
         
-        choice = input("\nEnter your choice (1-10): ")
+        choice = input("\nEnter your choice (1-11): ")
         
         if choice == '1':
             # View all portfolios for current user
@@ -257,79 +260,138 @@ def portfolio_menu():
             
         elif choice == '9':
             view_portfolio_analytics()
+            pause()
             
         elif choice == '10':
+            # View portfolio history
+            try:
+                portfolio_id = int(input("Enter portfolio ID: "))
+                period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ")
+                # verify period
+                if period not in ['5d', '1mo', '6mo', '1y', '5y', 'all']:
+                    print("\n❌ Invalid period. Please enter a valid period.")
+                    pause()
+                    continue
+                graph = input("Do you want to see a graph of the portfolio? (y/n): ")
+                data = portfolio.view_portfolio_history(current_user_id, portfolio_id, period)
+                if data:
+                    print_header(f"Portfolio {portfolio_id} History")
+                    print(tabulate(data, headers=["Date", "Total Value"]))
+                else:
+                    print(f"\nNo history data found for portfolio {portfolio_id}.")
+                    pause()
+                    continue
+
+                if graph.lower() == 'y':
+                    # Convert data to DataFrame for plotting
+                    df = pd.DataFrame(data, columns=['Date', 'Value'])
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    df.set_index('Date', inplace=True)
+                    
+                    # Get period name for title
+                    period_names = {
+                        '5d': '5 Days', 
+                        '1mo': '1 Month', 
+                        '6mo': '6 Months', 
+                        '1y': '1 Year', 
+                        '5y': '5 Years', 
+                        'all': 'All Time'
+                    }
+                    period_name = period_names.get(period, 'Custom Period')
+                    
+                    plt.figure(figsize=(12, 8))
+                    plt.plot(df.index, df['Value'])
+                    plt.title(f'Portfolio {portfolio_id} Value - {period_name}')
+                    plt.xlabel('Date')
+                    plt.ylabel('Value ($)')
+                    plt.grid(True)
+                    plt.show()
+            except ValueError:
+                print("\n❌ Invalid input. Please enter valid numbers.")
+            pause()
+            
+        elif choice == '11':
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 10.")
+            print("\n❌ Invalid choice. Please enter a number between 1 and 11.")
             pause()
 
 def view_portfolio_analytics():
-    """Display portfolio analytics including CV, Beta, and correlation/covariance matrices"""
+    """View portfolio analytics including CV, Beta, and correlation/covariance matrices."""
     try:
         portfolio_id = int(input("Enter portfolio ID: "))
         
-        # Get date range
-        print("\nEnter date range for analysis (YYYY-MM-DD format)")
-        print("Leave blank for default range (1 year)")
-        start_date_str = input("Start date: ").strip()
-        end_date_str = input("End date: ").strip()
-        
-        # Parse dates if provided
+        # Get optional date range
+        use_custom_dates = input("Use custom date range? (y/n): ").lower() == 'y'
         start_date = None
         end_date = None
-        if start_date_str:
-            start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d').date()
-        if end_date_str:
-            end_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        
+        if use_custom_dates:
+            start_date = input("Enter start date (YYYY-MM-DD): ")
+            end_date = input("Enter end date (YYYY-MM-DD): ")
         
         # Get analytics
+        portfolio = Portfolio()
         analytics = portfolio.compute_portfolio_analytics(current_user_id, portfolio_id, start_date, end_date)
         
         if not analytics:
-            print("\n❌ No analytics available. Make sure the portfolio exists and contains stocks.")
-            pause()
+            print("No analytics available for this portfolio.")
             return
-            
-        # Display stock analytics
-        print_header("Portfolio Analytics")
+        
+        # Display date range
+        print(f"\nAnalytics for date range: {analytics['date_range']['start']} to {analytics['date_range']['end']}")
+        
+        # Display stock-specific analytics
         print("\nStock Analytics:")
-        headers = ["Symbol", "Shares", "Coefficient of Variation", "Beta"]
-        data = [[
-            stock['symbol'],
-            stock['shares'],
-            f"{stock['coefficient_of_variation']:.4f}",
-            f"{stock['beta']:.4f}"
-        ] for stock in analytics['stock_analytics']]
-        print(tabulate(data, headers=headers, tablefmt="grid"))
+        stock_data = []
+        for stock in analytics['stock_analytics']:
+            stock_data.append([
+                stock['symbol'],
+                f"{stock['coefficient_of_variation']:.4f}" if stock['coefficient_of_variation'] is not None else "N/A",
+                f"{stock['beta']:.4f}" if stock['beta'] is not None else "N/A"
+            ])
+        
+        print(tabulate(stock_data, 
+                      headers=['Symbol', 'Coefficient of Variation', 'Beta'],
+                      tablefmt='grid'))
         
         # Display correlation matrix
         print("\nCorrelation Matrix:")
         symbols = sorted(analytics['correlation_matrix'].keys())
-        headers = ["Symbol"] + symbols
-        data = []
-        for symbol in symbols:
-            row = [symbol]
-            for other_symbol in symbols:
-                row.append(f"{analytics['correlation_matrix'][symbol].get(other_symbol, 0):.4f}")
-            data.append(row)
-        print(tabulate(data, headers=headers, tablefmt="grid"))
+        corr_data = []
+        for symbol1 in symbols:
+            row = [symbol1]
+            for symbol2 in symbols:
+                if symbol1 == symbol2:
+                    row.append("1.0000")
+                else:
+                    corr = analytics['correlation_matrix'].get(symbol1, {}).get(symbol2)
+                    row.append(f"{corr:.4f}" if corr is not None else "N/A")
+            corr_data.append(row)
+        
+        print(tabulate(corr_data,
+                      headers=['Symbol'] + symbols,
+                      tablefmt='grid'))
         
         # Display covariance matrix
         print("\nCovariance Matrix:")
-        data = []
-        for symbol in symbols:
-            row = [symbol]
-            for other_symbol in symbols:
-                row.append(f"{analytics['covariance_matrix'][symbol].get(other_symbol, 0):.4f}")
-            data.append(row)
-        print(tabulate(data, headers=headers, tablefmt="grid"))
+        cov_data = []
+        for symbol1 in symbols:
+            row = [symbol1]
+            for symbol2 in symbols:
+                cov = analytics['covariance_matrix'].get(symbol1, {}).get(symbol2)
+                row.append(f"{cov:.6f}" if cov is not None else "N/A")
+            cov_data.append(row)
         
-    except ValueError as e:
-        print(f"\n❌ Invalid input: {e}")
+        print(tabulate(cov_data,
+                      headers=['Symbol'] + symbols,
+                      tablefmt='grid'))
+        
+    except ValueError:
+        print("Invalid input. Please enter valid numbers and dates.")
     except Exception as e:
-        print(f"\n❌ Error computing analytics: {e}")
+        print(f"Error viewing portfolio analytics: {e}")
     
     pause()
 
@@ -347,9 +409,10 @@ def stocklist_menu():
         print("9. Review Stock List")
         print("10. View Reviews for Stock List")
         print("11. Delete Review")
-        print("12. Return to Main Menu")
+        print("12. View Stock List History")
+        print("13. Return to Main Menu")
         
-        choice = input("\nEnter your choice (1-12): ")
+        choice = input("\nEnter your choice (1-13): ")
         
         if choice == '1':
             # View accessible stock lists
@@ -527,10 +590,56 @@ def stocklist_menu():
             pause()
             
         elif choice == '12':
+            # View stock list history
+            try:
+                stocklist_id = int(input("Enter stock list ID: "))
+                period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ")
+                # verify period
+                if period not in ['5d', '1mo', '6mo', '1y', '5y', 'all']:
+                    print("\n❌ Invalid period. Please enter a valid period.")
+                    pause()
+                    continue
+                graph = input("Do you want to see a graph of the stock list? (y/n): ")
+                data = stock_list.view_stock_list_history(current_user_id, stocklist_id, period)
+                if data:
+                    print_header(f"Stock List {stocklist_id} History")
+                    print(tabulate(data, headers=["Date", "Total Value"]))
+                else:
+                    print(f"\nNo history data found for stock list {stocklist_id}.")
+
+                if graph.lower() == 'y':
+                    # Convert data to DataFrame for plotting
+                    df = pd.DataFrame(data, columns=['Date', 'Value'])
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    df.set_index('Date', inplace=True)
+                    
+                    # Get period name for title
+                    period_names = {
+                        '5d': '5 Days', 
+                        '1mo': '1 Month', 
+                        '6mo': '6 Months', 
+                        '1y': '1 Year', 
+                        '5y': '5 Years', 
+                        'all': 'All Time'
+                    }
+                    period_name = period_names.get(period, 'Custom Period')
+                    
+                    plt.figure(figsize=(12, 8))
+                    plt.plot(df.index, df['Value'])
+                    plt.title(f'Stock List {stocklist_id} Value - {period_name}')
+                    plt.xlabel('Date')
+                    plt.ylabel('Value ($)')
+                    plt.grid(True)
+                    plt.show()
+            except ValueError:
+                print("\n❌ Invalid input. Please enter valid numbers.")
+            pause()
+            
+        elif choice == '13':
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 12.")
+            print("\n❌ Invalid choice. Please enter a number between 1 and 13.")
             pause()
 
 def friends_menu():
@@ -798,7 +907,7 @@ def setup_db(load_stock_history = False):
 
 def main():
 
-    setup_db(False)
+    setup_db(True)
     pause()
     
     print_header("Welcome to Stock Social Network - A CSCC43 Project")

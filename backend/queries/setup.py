@@ -133,6 +133,18 @@ create_daily_stock_info = '''
     );
 '''
 
+create_portfolio_analytics_cache = '''
+    CREATE TABLE IF NOT EXISTS PortfolioAnalyticsCache (
+        cache_id SERIAL PRIMARY KEY,
+        portfolio_id INT REFERENCES Portfolios(portfolio_id) ON DELETE CASCADE,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        analytics_data JSONB NOT NULL,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (portfolio_id, start_date, end_date)
+    );
+'''
+
 load_stock_history_from_csv = '''COPY StocksHistory(timestamp, open, high,low, close, volume, symbol) 
     FROM 'data/pg17/data/sp500history.csv' DELIMITER ',' CSV HEADER;
 '''
@@ -269,4 +281,5 @@ setup_queries = [
     create_portfolio_transactions,
     create_reviews,
     create_daily_stock_info,
+    create_portfolio_analytics_cache,
 ]
