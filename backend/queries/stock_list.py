@@ -367,6 +367,8 @@ class StockList:
         cursor = self.conn.cursor()
         
         # Check if user has access to stock list
+        # NOTE: we allow friends who have been shared the list to view the history
+        # Makes sense if they should be reviewing it
         accessible_stock_lists = self.view_accessible_stock_lists(user_id)
         if not any([lst[0] == stocklist_id for lst in accessible_stock_lists]):
             cursor.close()
@@ -386,15 +388,22 @@ class StockList:
             return None
             
         # Get the most recent date from DailyStockInfo or StocksHistory
+        # for the stocks *in the stock list*, take the minimum of the max dates
         recent_date_query = '''
-            SELECT MAX(timestamp) 
+            SELECT MIN(max_ts)
             FROM (
-                SELECT timestamp FROM DailyStockInfo
-                UNION
-                SELECT timestamp FROM StocksHistory
-            ) all_dates;
+                SELECT sls.symbol, MAX(combined.timestamp) as max_ts
+                FROM StockListStocks sls
+                JOIN (
+                    SELECT symbol, timestamp FROM DailyStockInfo
+                    UNION ALL
+                    SELECT symbol, timestamp FROM StocksHistory
+                ) combined ON sls.symbol = combined.symbol
+                WHERE sls.stocklist_id = %s
+                GROUP BY sls.symbol
+            ) AS symbol_max_dates;
         '''
-        cursor.execute(recent_date_query)
+        cursor.execute(recent_date_query, (stocklist_id,))
         latest_date = cursor.fetchone()[0]
         
         if not latest_date:
@@ -427,7 +436,7 @@ class StockList:
                     UNION
                     SELECT timestamp FROM DailyStockInfo
                 ) all_dates
-                WHERE timestamp >= %s
+                WHERE timestamp >= %s AND timestamp <= %s
             ),
             stock_values AS (
                 SELECT 
@@ -452,7 +461,7 @@ class StockList:
             ORDER BY timestamp ASC;
         '''
         
-        cursor.execute(history_query, (start_date, stocklist_id))
+        cursor.execute(history_query, (start_date, latest_date, stocklist_id))
         history = cursor.fetchall()
         cursor.close()
         return history 

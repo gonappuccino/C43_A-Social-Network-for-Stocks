@@ -318,83 +318,72 @@ def portfolio_menu():
             pause()
 
 def view_portfolio_analytics():
-    """View portfolio analytics including CV, Beta, and correlation/covariance matrices."""
+    """Display portfolio analytics including CV, Beta, and correlation/covariance matrices"""
     try:
         portfolio_id = int(input("Enter portfolio ID: "))
         
-        # Get optional date range
-        use_custom_dates = input("Use custom date range? (y/n): ").lower() == 'y'
+        # Get date range
+        print("\nEnter date range for analysis (YYYY-MM-DD format)")
+        print("Leave blank for maximum possible range based on available stock data")
+        start_date_str = input("Start date: ").strip()
+        end_date_str = input("End date: ").strip()
+        
+        # Parse dates if provided
         start_date = None
         end_date = None
-        
-        if use_custom_dates:
-            start_date = input("Enter start date (YYYY-MM-DD): ")
-            end_date = input("Enter end date (YYYY-MM-DD): ")
+        if start_date_str:
+            start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        if end_date_str:
+            end_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
         
         # Get analytics
-        portfolio = Portfolio()
         analytics = portfolio.compute_portfolio_analytics(current_user_id, portfolio_id, start_date, end_date)
         
         if not analytics:
-            print("No analytics available for this portfolio.")
+            print("\n❌ No analytics available. Make sure the portfolio exists and contains stocks.")
+            pause()
             return
-        
-        # Display date range
-        print(f"\nAnalytics for date range: {analytics['date_range']['start']} to {analytics['date_range']['end']}")
-        
-        # Display stock-specific analytics
+            
+        # Display stock analytics
+        print_header("Portfolio Analytics")
         print("\nStock Analytics:")
-        stock_data = []
-        for stock in analytics['stock_analytics']:
-            stock_data.append([
-                stock['symbol'],
-                f"{stock['coefficient_of_variation']:.4f}" if stock['coefficient_of_variation'] is not None else "N/A",
-                f"{stock['beta']:.4f}" if stock['beta'] is not None else "N/A"
-            ])
-        
-        print(tabulate(stock_data, 
-                      headers=['Symbol', 'Coefficient of Variation', 'Beta'],
-                      tablefmt='grid'))
+        headers = ["Symbol", "Shares", "Coefficient of Variation", "Beta"]
+        data = [[
+            stock['symbol'],
+            stock['shares'],
+            f"{stock['coefficient_of_variation']:.4f}",
+            f"{stock['beta']:.4f}"
+        ] for stock in analytics['stock_analytics']]
+        print(tabulate(data, headers=headers, tablefmt="grid"))
         
         # Display correlation matrix
         print("\nCorrelation Matrix:")
         symbols = sorted(analytics['correlation_matrix'].keys())
-        corr_data = []
-        for symbol1 in symbols:
-            row = [symbol1]
-            for symbol2 in symbols:
-                if symbol1 == symbol2:
-                    row.append("1.0000")
-                else:
-                    corr = analytics['correlation_matrix'].get(symbol1, {}).get(symbol2)
-                    row.append(f"{corr:.4f}" if corr is not None else "N/A")
-            corr_data.append(row)
-        
-        print(tabulate(corr_data,
-                      headers=['Symbol'] + symbols,
-                      tablefmt='grid'))
+        headers = ["Symbol"] + symbols
+        data = []
+        for symbol in symbols:
+            row = [symbol]
+            for other_symbol in symbols:
+                row.append(f"{analytics['correlation_matrix'][symbol].get(other_symbol, 0):.4f}")
+            data.append(row)
+        print(tabulate(data, headers=headers, tablefmt="grid"))
         
         # Display covariance matrix
         print("\nCovariance Matrix:")
-        cov_data = []
-        for symbol1 in symbols:
-            row = [symbol1]
-            for symbol2 in symbols:
-                cov = analytics['covariance_matrix'].get(symbol1, {}).get(symbol2)
-                row.append(f"{cov:.6f}" if cov is not None else "N/A")
-            cov_data.append(row)
+        data = []
+        for symbol in symbols:
+            row = [symbol]
+            for other_symbol in symbols:
+                row.append(f"{analytics['covariance_matrix'][symbol].get(other_symbol, 0):.4f}")
+            data.append(row)
+        print(tabulate(data, headers=headers, tablefmt="grid"))
         
-        print(tabulate(cov_data,
-                      headers=['Symbol'] + symbols,
-                      tablefmt='grid'))
-        
-    except ValueError:
-        print("Invalid input. Please enter valid numbers and dates.")
+    except ValueError as e:
+        print(f"\n❌ Invalid input: {e}")
     except Exception as e:
-        print(f"Error viewing portfolio analytics: {e}")
+        print(f"\n❌ Error computing analytics: {e}")
     
     pause()
-
 def stocklist_menu():
     while True:
         print_header("Stock Lists Management")
