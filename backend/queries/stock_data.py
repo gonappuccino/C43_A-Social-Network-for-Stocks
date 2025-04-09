@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import mplfinance as mpf
 import pandas as pd
 from queries.utils import decimal_to_float as d2f
+from typing import Tuple, List, Dict
 
 class StockData:
     conn = psycopg2.connect(
@@ -336,3 +337,37 @@ class StockData:
         )
 
         return df 
+
+    def predict_stock_price(self, symbol: str, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
+        """
+        Predict the future price of a stock.
+        
+        Args:
+            symbol: The stock symbol
+            days_to_predict: Number of days to predict into the future
+            
+        Returns:
+            Tuple containing:
+            - List of predicted prices (date, price)
+            - Confidence score (0-1)
+        """
+        cursor = self.conn.cursor()
+        
+        # Get historical data
+        data = self.view_stock_info(symbol, 'all')
+        if not data:
+            cursor.close()
+            return [], 0.0
+            
+        # Convert to list of dicts
+        historical_data = [{
+            'timestamp': row[0].strftime('%Y-%m-%d'),
+            'close': float(row[4])
+        } for row in data]
+        
+        cursor.close()
+        
+        # Use prediction model
+        from models.prediction_model import StockPredictionModel
+        model = StockPredictionModel()
+        return model.predict_future_prices(historical_data, days_to_predict) 

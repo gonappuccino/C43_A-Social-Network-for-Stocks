@@ -2,6 +2,7 @@ import psycopg2
 from queries.utils import decimal_to_float as d2f
 from queries.friends import Friends
 import datetime
+from typing import List, Dict, Tuple
 
 class StockList:
     conn = psycopg2.connect(
@@ -465,3 +466,92 @@ class StockList:
         history = cursor.fetchall()
         cursor.close()
         return history 
+
+    def predict_stock_list_value(self, user_id: int, stocklist_id: int, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
+        """
+        Predict the future value of a stock list.
+        
+        Args:
+            user_id: The user ID
+            stocklist_id: The stock list ID
+            days_to_predict: Number of days to predict into the future
+            
+        Returns:
+            Tuple containing:
+            - List of predicted values (date, value)
+            - Confidence score (0-1)
+        """
+        cursor = self.conn.cursor()
+        
+        # Check if user has access to stock list
+        accessible_lists = self.view_accessible_stock_lists(user_id)
+        if stocklist_id not in [lst['stocklist_id'] for lst in accessible_lists]:
+            cursor.close()
+            return [], 0.0
+            
+        # Get the minimum of maximum dates for all stocks in the list
+        max_dates_query = '''
+            SELECT MIN(max_ts)
+            FROM (
+                SELECT sls.symbol, MAX(combined.timestamp) as max_ts
+                FROM StockListStocks sls
+                JOIN (
+                    SELECT symbol, timestamp FROM StocksHistory
+                    UNION ALL
+                    SELECT symbol, timestamp FROM DailyStockInfo
+                ) combined ON sls.symbol = combined.symbol
+                WHERE sls.stocklist_id = %s
+                GROUP BY sls.symbol
+            ) AS symbol_max_dates;
+        '''
+        cursor.execute(max_dates_query, (stocklist_id,))
+        latest_date = cursor.fetchone()[0]
+        
+        if not latest_date:
+            cursor.close()
+            return [], 0.0
+            
+        # Get historical stock list values up to the latest common date
+        history_query = '''
+            WITH list_dates AS (
+                SELECT DISTINCT timestamp
+                FROM (
+                    SELECT timestamp FROM StocksHistory
+                    UNION
+                    SELECT timestamp FROM DailyStockInfo
+                ) all_dates
+                WHERE timestamp <= %s
+            ),
+            stock_values AS (
+                SELECT 
+                    ld.timestamp,
+                    sls.symbol,
+                    sls.num_shares,
+                    COALESCE(sh.close, dsi.close) as close_price
+                FROM list_dates ld
+                CROSS JOIN (
+                    SELECT symbol, num_shares
+                    FROM StockListStocks
+                    WHERE stocklist_id = %s
+                ) sls
+                LEFT JOIN StocksHistory sh ON sh.symbol = sls.symbol AND sh.timestamp = ld.timestamp
+                LEFT JOIN DailyStockInfo dsi ON dsi.symbol = sls.symbol AND dsi.timestamp = ld.timestamp
+            )
+            SELECT 
+                timestamp,
+                SUM(num_shares * close_price) as total_value
+            FROM stock_values
+            GROUP BY timestamp
+            ORDER BY timestamp ASC;
+        '''
+        
+        cursor.execute(history_query, (latest_date, stocklist_id))
+        list_data = [{'timestamp': row[0].strftime('%Y-%m-%d'), 'value': float(row[1])} 
+                    for row in cursor.fetchall()]
+        
+        cursor.close()
+        
+        # Use prediction model
+        from models.prediction_model import StockListPredictionModel
+        model = StockListPredictionModel()
+        return model.predict_stock_list_value(list_data, days_to_predict) 

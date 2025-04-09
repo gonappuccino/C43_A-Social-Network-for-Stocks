@@ -138,9 +138,10 @@ def portfolio_menu():
         print("8. View Portfolio Transactions")
         print("9. View Portfolio Analytics")
         print("10. View Portfolio History")
-        print("11. Return to Main Menu")
+        print("11. Predict Portfolio Value")
+        print("12. Return to Main Menu")
         
-        choice = input("\nEnter your choice (1-11): ")
+        choice = input("\nEnter your choice (1-12): ")
         
         if choice == '1':
             # View all portfolios for current user
@@ -311,10 +312,14 @@ def portfolio_menu():
             pause()
             
         elif choice == '11':
+            predict_portfolio_value()
+            pause()
+            
+        elif choice == '12':
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 11.")
+            print("\n❌ Invalid choice. Please enter a number between 1 and 12.")
             pause()
 
 def view_portfolio_analytics():
@@ -384,6 +389,29 @@ def view_portfolio_analytics():
         print(f"\n❌ Error computing analytics: {e}")
     
     pause()
+
+def predict_portfolio_value():
+    """Predict portfolio value"""
+    try:
+        portfolio_id = int(input("Enter portfolio ID: "))
+        days = input("Enter number of days to predict (default 30): ")
+        try:
+            days = int(days) if days else 30
+        except ValueError:
+            print("Invalid input. Using default 30 days")
+            days = 30
+            
+        predictions, confidence = portfolio.predict_portfolio_value(current_user_id, portfolio_id, days)
+        if predictions:
+            print(f"\nPortfolio Value Predictions (Confidence: {confidence:.2%})")
+            df = pd.DataFrame(predictions)
+            print(df)
+        else:
+            print("No predictions available")
+    except ValueError:
+        print("Invalid input")
+    pause()
+
 def stocklist_menu():
     while True:
         print_header("Stock Lists Management")
@@ -747,63 +775,63 @@ def friends_menu():
             pause()
 
 def stock_info_menu():
+    """Display stock information menu"""
     while True:
-        print_header("Stock Information")
-        print("1. View Stock Info")
-        print("2. Fetch Latest Stock Info For an Individual Stock (Yahoo Finance)")
-        print("3. Fetch Latest Stock Info For All Stocks (Yahoo Finance)")
-        print("4. Return to Main Menu")
+        print("\nStock Information Menu")
+        print("1. View stock info")
+        print("2. Fetch latest stock info (individual stock)")
+        print("3. Fetch latest stock info (all stocks)")
+        print("4. Predict stock price")
+        print("5. Back to main menu")
         
-        choice = input("\nEnter your choice (1-4): ")
+        choice = input("\nEnter your choice: ")
         
-        if choice == '1':
-            # View stock info
+        if choice == "1":
             symbol = input("Enter stock symbol: ").upper()
-            period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ")
-            # verify period
+            period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ").lower()
             if period not in ['5d', '1mo', '6mo', '1y', '5y', 'all']:
-                print("\n❌ Invalid period. Please enter a valid period.")
-                pause()
-                continue
-            graph = input("Do you want to see a graph of the stock? (y/n): ")
+                print("Invalid period. Using default 'all'")
+                period = 'all'
+                
             data = stock_data.view_stock_info(symbol, period)
             if data:
-                print_header(f"Stock Information for {symbol}")
-                print(tabulate(data, headers=["Date", "Open", "High", "Low", "Close", "Volume"]))
+                df = pd.DataFrame(data, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
+                print("\nStock Information:")
+                print(df)
             else:
-                print(f"\nNo stock information found for {symbol}.")
-
-            if graph.lower() == 'y':
-                stock_data.display_stock_chart(symbol, period)
-            pause()
-            
-        elif choice == '2':
-            # Fetch latest stock info
+                print("No data available for this stock")
+                
+        elif choice == "2":
             symbol = input("Enter stock symbol: ").upper()
-            num_days = int(input("Enter number of days to fetch (1-365): "))
-            result = stock_data.fetch_and_store_daily_info_yahoo(symbol, num_days)
-            if result:
-                print(f"\n✅ Successfully fetched and stored {num_days} days of data for {symbol}.")
-            else:
-                print(f"\n❌ Failed to fetch information for {symbol}. Make sure it's a valid symbol.")
-            pause()
-
-        elif choice == '3':
-            # Fetch latest stock info for all stocks
-            num_days = int(input("Enter number of days to fetch (1-365): "))
-            result = stock_data.fetch_and_store_all_stocks_daily_info(num_days)
-            if result:
-                print(f"\n✅ Successfully fetched and stored {num_days} days of data for all stocks.")
-            else:
-                print(f"\n❌ Failed to fetch information for all stocks.")
-            pause()
+            stock_data.fetch_and_store_daily_info_yahoo(symbol)
+            print(f"Latest stock info fetched for {symbol}")
             
-        elif choice == '4':
-            return
+        elif choice == "3":
+            stock_data.fetch_and_store_all_stocks_info_yahoo()
+            print("Latest stock info fetched for all stocks")
+            
+        elif choice == "4":
+            symbol = input("Enter stock symbol: ").upper()
+            days = input("Enter number of days to predict (default 30): ")
+            try:
+                days = int(days) if days else 30
+            except ValueError:
+                print("Invalid input. Using default 30 days")
+                days = 30
+                
+            predictions, confidence = stock_data.predict_stock_price(symbol, days)
+            if predictions:
+                print(f"\nPrice Predictions for {symbol} (Confidence: {confidence:.2%})")
+                df = pd.DataFrame(predictions)
+                print(df)
+            else:
+                print("No predictions available for this stock")
+                
+        elif choice == "5":
+            break
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 4.")
-            pause()
+            print("Invalid choice. Please try again.")
 
 def delete_account_menu():
     """Handle account deletion with confirmation"""
@@ -870,8 +898,7 @@ def setup_db(load_stock_history = False):
     if not load_stock_history:
         return
     try:
-        #cursor.execute(load_stock_history_from_csv)
-        load_stock_history_from_local_fast(conn)
+        cursor.execute(load_stock_history_from_csv)
         cursor.execute(copy_symbols)
         conn.commit()
         cursor.close()

@@ -2,7 +2,7 @@ import psycopg2
 from queries.utils import decimal_to_float as d2f
 import datetime
 import json
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple, List
 
 class Portfolio:
     conn = psycopg2.connect(
@@ -781,3 +781,104 @@ class Portfolio:
         history = cursor.fetchall()
         cursor.close()
         return history 
+
+    def predict_portfolio_value(self, user_id: int, portfolio_id: int, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
+        """
+        Predict the future value of a portfolio.
+        
+        Args:
+            user_id: The user ID
+            portfolio_id: The portfolio ID
+            days_to_predict: Number of days to predict into the future
+            
+        Returns:
+            Tuple containing:
+            - List of predicted values (date, value)
+            - Confidence score (0-1)
+        """
+        cursor = self.conn.cursor()
+        
+        # Check if user has access to portfolio
+        is_owner_query = '''
+            SELECT 1
+                FROM Portfolios
+                WHERE portfolio_id = %s AND user_id = %s
+        '''
+        cursor.execute(is_owner_query, (portfolio_id, user_id))
+        is_owner = cursor.fetchone()
+        if not is_owner:
+            cursor.close()
+            return [], 0.0
+        
+        # Get cash balance
+        cash_balance = self.get_cash_balance(portfolio_id, user_id)
+        if cash_balance is None:
+            cursor.close()
+            return [], 0.0
+            
+        # Get the minimum of maximum dates for all stocks in the portfolio
+        max_dates_query = '''
+            SELECT MIN(max_ts)
+            FROM (
+                SELECT ps.symbol, MAX(combined.timestamp) as max_ts
+                FROM PortfolioStocks ps
+                JOIN (
+                    SELECT symbol, timestamp FROM StocksHistory
+                    UNION ALL
+                    SELECT symbol, timestamp FROM DailyStockInfo
+                ) combined ON ps.symbol = combined.symbol
+                WHERE ps.portfolio_id = %s
+                GROUP BY ps.symbol
+            ) AS symbol_max_dates;
+        '''
+        cursor.execute(max_dates_query, (portfolio_id,))
+        latest_date = cursor.fetchone()[0]
+        
+        if not latest_date:
+            cursor.close()
+            return [], 0.0
+            
+        # Get historical portfolio values up to the latest common date
+        history_query = '''
+            WITH portfolio_dates AS (
+                SELECT DISTINCT timestamp
+                FROM (
+                    SELECT timestamp FROM StocksHistory
+                    UNION
+                    SELECT timestamp FROM DailyStockInfo
+                ) all_dates
+                WHERE timestamp <= %s
+            ),
+            stock_values AS (
+                SELECT 
+                    pd.timestamp,
+                    ps.symbol,
+                    ps.num_shares,
+                    COALESCE(sh.close, dsi.close) as close_price
+                FROM portfolio_dates pd
+                CROSS JOIN (
+                    SELECT symbol, num_shares
+                    FROM PortfolioStocks
+                    WHERE portfolio_id = %s
+                ) ps
+                LEFT JOIN StocksHistory sh ON sh.symbol = ps.symbol AND sh.timestamp = pd.timestamp
+                LEFT JOIN DailyStockInfo dsi ON dsi.symbol = ps.symbol AND dsi.timestamp = pd.timestamp
+            )
+            SELECT 
+                timestamp,
+                SUM(num_shares * close_price) + %s as total_value
+            FROM stock_values
+            GROUP BY timestamp
+            ORDER BY timestamp ASC;
+        '''
+        
+        cursor.execute(history_query, (latest_date, portfolio_id, cash_balance))
+        portfolio_data = [{'timestamp': row[0].strftime('%Y-%m-%d'), 'value': float(row[1])} 
+                         for row in cursor.fetchall()]
+        
+        cursor.close()
+        
+        # Use prediction model
+        from models.prediction_model import PortfolioPredictionModel
+        model = PortfolioPredictionModel()
+        return model.predict_portfolio_value(portfolio_data, days_to_predict) 
