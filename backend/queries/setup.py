@@ -101,7 +101,7 @@ create_reviews = '''
         review_id SERIAL PRIMARY KEY,
         user_id INT REFERENCES Users(user_id) ON DELETE CASCADE,
         stocklist_id INT REFERENCES StockLists(stocklist_id) ON DELETE CASCADE,
-        review_text TEXT,
+        review_text VARCHAR(4000),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (user_id, stocklist_id)
