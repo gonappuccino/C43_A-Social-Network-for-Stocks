@@ -18,15 +18,8 @@ class StockData:
 
     def fetch_and_store_daily_info_yahoo(self, symbol, num_days=1):
         """
-        Fetch stock info for 'symbol' from Yahoo Finance starting from the day after
-        the most recent day recorded in the database, and insert/update it in the DailyStockInfo table.
-        
-        Args:
-            symbol: The stock symbol to fetch data for
-            num_days: Number of days to fetch (default: 1)
-            
-        Returns:
-            Number of days inserted/updated, or None if no data
+        Fetch stock info from Yahoo Finance and adjust prices based on the ratio between
+        our last known price and Yahoo Finance's price for the same date.
         """
         cursor = self.conn.cursor()
         
@@ -60,11 +53,30 @@ class StockData:
             cursor.execute(history_date_query, (symbol,))
             latest_date = cursor.fetchone()[0]
         
+        adjustment_ratio = 1
         # Calculate the start date (day after the most recent date)
         if latest_date:
-            start_date = latest_date + datetime.timedelta(days=1)
+            start_date = latest_date
+            day_after_start_date = start_date + datetime.timedelta(days=1)
             # Format for Yahoo Finance API
             start_date_str = start_date.strftime('%Y-%m-%d')
+            day_after_start_date_str = day_after_start_date.strftime('%Y-%m-%d')
+
+            our_price = self.view_stock_info(symbol, '5d')
+            if our_price:
+                our_price = our_price[0][4]  # Get the close price from the first row
+                
+                # Fetch Yahoo Finance data for the same date
+                yf_data = yf.Ticker(symbol).history(start=start_date_str, end=day_after_start_date_str)
+                if not yf_data.empty:
+                    yf_price = float(yf_data['Close'].iloc[0])
+                    # Adjusts in case stock was split between 2018 (end of historical data) and now
+                    adjustment_ratio = our_price / yf_price
+                else:
+                    adjustment_ratio = 1
+            else:
+                adjustment_ratio = 1
+            start_date += datetime.timedelta(days=1)
         else:
             # If no data in either table, start from 5 years ago
             start_date = datetime.date.today() - datetime.timedelta(days=5*365)
@@ -74,7 +86,7 @@ class StockData:
         today = datetime.date.today()
         if start_date > today:
             cursor.close()
-            return 0  # Already up to date
+            return 0
         
         # Fetch data from Yahoo Finance
         ticker = yf.Ticker(symbol)
@@ -99,11 +111,11 @@ class StockData:
             if date > today:
                 continue
                 
-            open_price = float(row["Open"])
-            high_price = float(row["High"])
-            low_price = float(row["Low"])
-            close_price = float(row["Close"])
-            volume = int(row["Volume"])
+            open_price = float(row["Open"]) * adjustment_ratio
+            high_price = float(row["High"]) * adjustment_ratio
+            low_price = float(row["Low"]) * adjustment_ratio
+            close_price = float(row["Close"]) * adjustment_ratio
+            volume = int(row["Volume"]) / adjustment_ratio
             
             query = '''
                 INSERT INTO DailyStockInfo (symbol, timestamp, open, high, low, close, volume)

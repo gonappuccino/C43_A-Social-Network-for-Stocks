@@ -485,7 +485,7 @@ class StockList:
         
         # Check if user has access to stock list
         accessible_lists = self.view_accessible_stock_lists(user_id)
-        if stocklist_id not in [lst['stocklist_id'] for lst in accessible_lists]:
+        if stocklist_id not in [lst[0] for lst in accessible_lists]:
             cursor.close()
             return [], 0.0
             

@@ -387,8 +387,7 @@ def view_portfolio_analytics():
         print(f"\n❌ Invalid input: {e}")
     except Exception as e:
         print(f"\n❌ Error computing analytics: {e}")
-    
-    pause()
+
 
 def predict_portfolio_value():
     """Predict portfolio value"""
@@ -406,11 +405,52 @@ def predict_portfolio_value():
             print(f"\nPortfolio Value Predictions (Confidence: {confidence:.2%})")
             df = pd.DataFrame(predictions)
             print(df)
+            
+            plot = input("Do you want to see a graph of the predictions? (y/n): ")
+            if plot.lower() == 'y':
+                # Plot the predictions
+                plt.figure(figsize=(12, 8))
+                plt.plot(df['date'], df['value'], marker='o')
+                plt.title(f'Portfolio {portfolio_id} Value Predictions')
+                plt.xlabel('Date')
+                plt.ylabel('Value ($)')
+                plt.grid(True)
+                plt.show()
         else:
             print("No predictions available")
     except ValueError:
         print("Invalid input")
-    pause()
+
+def predict_stock_list_value():
+    """Predict stock list value"""
+    try:
+        stocklist_id = int(input("Enter stock list ID: "))
+        days = input("Enter number of days to predict (default 30): ")
+        try:
+            days = int(days) if days else 30
+        except ValueError:
+            print("Invalid input. Using default 30 days")
+            days = 30
+            
+        predictions, confidence = stock_list.predict_stock_list_value(current_user_id, stocklist_id, days)
+        if predictions:
+            print(f"\nStock List Value Predictions (Confidence: {confidence:.2%})")
+            df = pd.DataFrame(predictions)
+            print(df)
+            
+            plot = input("Do you want to see a graph of the predictions? (y/n): ")
+            if plot.lower() == 'y':
+                plt.figure(figsize=(12, 8))
+                plt.plot(df['date'], df['value'], marker='o')
+                plt.title(f'Stock List {stocklist_id} Value Predictions')
+                plt.xlabel('Date')
+                plt.ylabel('Value ($)')
+                plt.grid(True)
+                plt.show()
+        else:
+            print("No predictions available")
+    except ValueError:
+        print("Invalid input")
 
 def stocklist_menu():
     while True:
@@ -427,9 +467,10 @@ def stocklist_menu():
         print("10. View Reviews for Stock List")
         print("11. Delete Review")
         print("12. View Stock List History")
-        print("13. Return to Main Menu")
+        print("13. Predict Stock List Value")
+        print("14. Return to Main Menu")
         
-        choice = input("\nEnter your choice (1-13): ")
+        choice = input("\nEnter your choice (1-14): ")
         
         if choice == '1':
             # View accessible stock lists
@@ -547,6 +588,7 @@ def stocklist_menu():
             except ValueError:
                 print("\n❌ Invalid input. Please enter valid numbers.")
             pause()
+            
         elif choice == '8':
             # Unshare stock list with friend
             try:
@@ -561,6 +603,7 @@ def stocklist_menu():
             except ValueError:
                 print("\n❌ Invalid input. Please enter valid numbers.")
             pause()
+            
         elif choice == '9':
             # Review stock list
             try:
@@ -653,10 +696,13 @@ def stocklist_menu():
             pause()
             
         elif choice == '13':
+            predict_stock_list_value()
+            pause()
+        elif choice == '14':
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 13.")
+            print("\n❌ Invalid choice. Please enter a number between 1 and 14.")
             pause()
 
 def friends_menu():
@@ -777,7 +823,7 @@ def friends_menu():
 def stock_info_menu():
     """Display stock information menu"""
     while True:
-        print("\nStock Information Menu")
+        print_header("Stock Information Menu")
         print("1. View stock info")
         print("2. Fetch latest stock info (individual stock)")
         print("3. Fetch latest stock info (all stocks)")
@@ -786,29 +832,47 @@ def stock_info_menu():
         
         choice = input("\nEnter your choice: ")
         
-        if choice == "1":
+        if choice == '1':
+            # View stock info
             symbol = input("Enter stock symbol: ").upper()
-            period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ").lower()
+            period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ")
+            # verify period
             if period not in ['5d', '1mo', '6mo', '1y', '5y', 'all']:
-                print("Invalid period. Using default 'all'")
-                period = 'all'
-                
+                print("\n❌ Invalid period. Please enter a valid period.")
+                pause()
+                continue
+            graph = input("Do you want to see a graph of the stock? (y/n): ")
             data = stock_data.view_stock_info(symbol, period)
             if data:
-                df = pd.DataFrame(data, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
-                print("\nStock Information:")
-                print(df)
+                print_header(f"Stock Information for {symbol}")
+                print(tabulate(data, headers=["Date", "Open", "High", "Low", "Close", "Volume"]))
             else:
-                print("No data available for this stock")
-                
-        elif choice == "2":
-            symbol = input("Enter stock symbol: ").upper()
-            stock_data.fetch_and_store_daily_info_yahoo(symbol)
-            print(f"Latest stock info fetched for {symbol}")
+                print(f"\nNo stock information found for {symbol}.")
+
+            if graph.lower() == 'y':
+                stock_data.display_stock_chart(symbol, period)
+            pause()
             
-        elif choice == "3":
-            stock_data.fetch_and_store_all_stocks_info_yahoo()
-            print("Latest stock info fetched for all stocks")
+        elif choice == '2':
+            # Fetch latest stock info
+            symbol = input("Enter stock symbol: ").upper()
+            num_days = int(input("Enter number of days to fetch (1-365): "))
+            result = stock_data.fetch_and_store_daily_info_yahoo(symbol, num_days)
+            if result:
+                print(f"\n✅ Successfully fetched and stored {num_days} days of data for {symbol}.")
+            else:
+                print(f"\n❌ Failed to fetch information for {symbol}. Make sure it's a valid symbol.")
+            pause()
+
+        elif choice == '3':
+            # Fetch latest stock info for all stocks
+            num_days = int(input("Enter number of days to fetch (1-365): "))
+            result = stock_data.fetch_and_store_all_stocks_daily_info(num_days)
+            if result:
+                print(f"\n✅ Successfully fetched and stored {num_days} days of data for all stocks.")
+            else:
+                print(f"\n❌ Failed to fetch information for all stocks.")
+            pause()
             
         elif choice == "4":
             symbol = input("Enter stock symbol: ").upper()
@@ -824,6 +888,17 @@ def stock_info_menu():
                 print(f"\nPrice Predictions for {symbol} (Confidence: {confidence:.2%})")
                 df = pd.DataFrame(predictions)
                 print(df)
+                plot = input("\nWould you like to plot the predictions? (y/n): ").lower()
+                if plot == 'y':
+                    plt.figure(figsize=(12, 6))
+                    plt.plot(df['date'], df['value'], marker='o')
+                    plt.title(f'Stock Price Predictions for {symbol}')
+                    plt.xlabel('Date')
+                    plt.ylabel('Price')
+                    plt.grid(True)
+                    plt.show()
+                pause()
+                
             else:
                 print("No predictions available for this stock")
                 
