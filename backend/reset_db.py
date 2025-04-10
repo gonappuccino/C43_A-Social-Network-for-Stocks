@@ -63,22 +63,22 @@ def reset_database():
         )
         cursor = conn.cursor()
         
-        print("🔄 Starting database reset...")
+        print("Starting database reset")
         
         # Drop all tables
-        print("🗑️ Dropping all tables...")
+        print("Dropping all tables")
         drop_tables(cursor)
         
         # Create all tables
-        print("🏗️ Creating all tables...")
+        print("Creating all tables")
         create_tables(cursor)
         
         # Commit the changes
         conn.commit()
-        print("✅ Database reset complete!")
+        print("Database reset complete")
         
     except psycopg2.Error as e:
-        print(f"❌ Database reset failed: {e}")
+        print(f"Database reset failed: {e}")
         if conn:
             conn.rollback()
     finally:

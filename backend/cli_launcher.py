@@ -36,7 +36,7 @@ def clear_screen():
 def print_header(title):
     clear_screen()
     print("=" * 60)
-    print(f"{title:^60}")
+    print(f"{title:^60}") 
     print("=" * 60)
     print()
 
