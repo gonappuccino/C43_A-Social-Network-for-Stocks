@@ -62,11 +62,11 @@ def login_menu():
             if result:
                 current_user_id = result[0]
                 current_username = email  # You might want to fetch the actual username
-                print(f"\n✅ Login successful! Welcome back.")
+                print(f"\nLogin successful! Welcome back.")
                 pause()
                 return True
             else:
-                print("\n❌ Invalid email or password. Please try again.")
+                print("\nInvalid email or password. Please try again.")
                 pause()
                 
         elif choice == '2':
@@ -76,11 +76,11 @@ def login_menu():
             
             success = auth.register(username, password, email)
             if success:
-                print(f"\n✅ Registration successful! Welcome {username}.")
+                print(f"\nRegistration successful! Welcome {username}.")
                 print("Please login with your new credentials.")
                 pause()
             else:
-                print("\n❌ Username or email already exists or invalid. Please try again.")
+                print("\nUsername or email already exists or invalid. Please try again.")
                 pause()
                 
         elif choice == '3':
@@ -88,7 +88,7 @@ def login_menu():
             sys.exit(0)
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 3.")
+            print("\nInvalid choice. Please enter a number between 1 and 3.")
             pause()
 
 def main_menu():
@@ -118,11 +118,11 @@ def main_menu():
         elif choice == '6':
             current_user_id = None
             current_username = None
-            print("\n✅ Logged out successfully.")
+            print("\nLogged out successfully.")
             pause()
             return
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 6.")
+            print("\nInvalid choice. Please enter a number between 1 and 6.")
             pause()
 
 def portfolio_menu():
@@ -160,9 +160,9 @@ def portfolio_menu():
                 portfolio_name = input("Enter portfolio name: ")
                 initial_cash = float(input("Initial cash balance: $"))
                 portfolio_id = portfolio.create_portfolio(current_user_id, portfolio_name, initial_cash)
-                print(f"\n✅ Portfolio created successfully with ID: {portfolio_id}")
+                print(f"\nPortfolio created successfully with ID: {portfolio_id}")
             except ValueError:
-                print("\n❌ Invalid amount. Please enter a valid number.")
+                print("\nInvalid amount. Please enter a valid number.")
             pause()
             
         elif choice == '3':
@@ -171,11 +171,11 @@ def portfolio_menu():
                 portfolio_id = int(input("Enter portfolio ID to delete: "))
                 result = portfolio.delete_portfolio(portfolio_id, current_user_id)
                 if result:
-                    print(f"\n✅ Portfolio {portfolio_id} deleted successfully.")
+                    print(f"\nPortfolio {portfolio_id} deleted successfully.")
                 else:
-                    print(f"\n❌ Portfolio {portfolio_id} not found or you don't have permission to delete it.")
+                    print(f"\nPortfolio {portfolio_id} not found or you don't have permission to delete it.")
             except ValueError:
-                print("\n❌ Invalid portfolio ID. Please enter a valid number.")
+                print("\nInvalid portfolio ID. Please enter a valid number.")
             pause()
             
         elif choice == '4':
@@ -192,9 +192,9 @@ def portfolio_menu():
                     value = portfolio.compute_portfolio_value(current_user_id, portfolio_id)
                     print(f"\nTotal Portfolio Value: ${value:.2f}")
                 else:
-                    print(f"\n❌ Portfolio {portfolio_id} not found or you don't have permission to view it.")
+                    print(f"\nPortfolio {portfolio_id} not found or you don't have permission to view it.")
             except ValueError:
-                print("\n❌ Invalid portfolio ID. Please enter a valid number.")
+                print("\nInvalid portfolio ID. Please enter a valid number.")
             pause()
             
         elif choice == '5':
@@ -204,11 +204,11 @@ def portfolio_menu():
                 amount = float(input("Enter amount (positive to deposit, negative to withdraw): $"))
                 result = portfolio.update_cash_balance(current_user_id, portfolio_id, amount)
                 if result is not None:
-                    print(f"\n✅ Cash balance updated successfully. New balance: ${result:.2f}")
+                    print(f"\nCash balance updated successfully. New balance: ${result:.2f}")
                 else:
-                    print("\n❌ Insufficient funds or invalid portfolio ID.")
+                    print("\nInsufficient funds or invalid portfolio ID.")
             except ValueError:
-                print("\n❌ Invalid input. Please enter valid numbers.")
+                print("\nInvalid input. Please enter valid numbers.")
             pause()
             
         elif choice == '6':
@@ -220,11 +220,11 @@ def portfolio_menu():
                 
                 result = portfolio.buy_stock_shares(current_user_id, portfolio_id, symbol, num_shares)
                 if result:
-                    print(f"\n✅ Successfully purchased {num_shares} shares of {symbol}.")
+                    print(f"\nSuccessfully purchased {num_shares} shares of {symbol}.")
                 else:
-                    print("\n❌ Purchase failed. Insufficient funds or invalid inputs.")
+                    print("\nPurchase failed. Insufficient funds or invalid inputs.")
             except ValueError:
-                print("\n❌ Invalid input. Please enter valid numbers.")
+                print("\nInvalid input. Please enter valid numbers.")
             pause()
             
         elif choice == '7':
@@ -236,11 +236,11 @@ def portfolio_menu():
                 
                 result = portfolio.sell_stock_shares(current_user_id, portfolio_id, symbol, num_shares)
                 if result:
-                    print(f"\n✅ Successfully sold {num_shares} shares of {symbol}.")
+                    print(f"\nSuccessfully sold {num_shares} shares of {symbol}.")
                 else:
-                    print("\n❌ Sale failed. Insufficient shares or invalid inputs.")
+                    print("\nSale failed. Insufficient shares or invalid inputs.")
             except ValueError:
-                print("\n❌ Invalid input. Please enter valid numbers.")
+                print("\nInvalid input. Please enter valid numbers.")
             pause()
             
         elif choice == '8':
@@ -256,7 +256,7 @@ def portfolio_menu():
                 else:
                     print(f"\nNo transactions found for portfolio {portfolio_id}.")
             except ValueError:
-                print("\n❌ Invalid portfolio ID. Please enter a valid number.")
+                print("\nInvalid portfolio ID. Please enter a valid number.")
             pause()
             
         elif choice == '9':
@@ -270,7 +270,7 @@ def portfolio_menu():
                 period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ")
                 # verify period
                 if period not in ['5d', '1mo', '6mo', '1y', '5y', 'all']:
-                    print("\n❌ Invalid period. Please enter a valid period.")
+                    print("\nInvalid period. Please enter a valid period.")
                     pause()
                     continue
                 graph = input("Do you want to see a graph of the portfolio? (y/n): ")
@@ -308,7 +308,7 @@ def portfolio_menu():
                     plt.grid(True)
                     plt.show()
             except ValueError:
-                print("\n❌ Invalid input. Please enter valid numbers.")
+                print("\nInvalid input. Please enter valid numbers.")
             pause()
             
         elif choice == '11':
@@ -319,7 +319,7 @@ def portfolio_menu():
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 12.")
+            print("\nInvalid choice. Please enter a number between 1 and 12.")
             pause()
 
 def view_portfolio_analytics():
@@ -345,7 +345,7 @@ def view_portfolio_analytics():
         analytics = portfolio.compute_portfolio_analytics(current_user_id, portfolio_id, start_date, end_date)
         
         if not analytics:
-            print("\n❌ No analytics available. Make sure the portfolio exists and contains stocks.")
+            print("\nNo analytics available. Make sure the portfolio exists and contains stocks.")
             pause()
             return
             
@@ -384,9 +384,9 @@ def view_portfolio_analytics():
         print(tabulate(data, headers=headers, tablefmt="grid"))
         
     except ValueError as e:
-        print(f"\n❌ Invalid input: {e}")
+        print(f"\nInvalid input: {e}")
     except Exception as e:
-        print(f"\n❌ Error computing analytics: {e}")
+        print(f"\nError computing analytics: {e}")
 
 
 def predict_portfolio_value():
@@ -493,9 +493,9 @@ def stocklist_menu():
             
             try:
                 stocklist_id = stock_list.create_stock_list(current_user_id, stocklist_name, is_public)
-                print(f"\n✅ Stock list created successfully with ID: {stocklist_id}")
+                print(f"\nStock list created successfully with ID: {stocklist_id}")
             except Exception as e:
-                print(f"\n❌ Error creating stock list: {e}")
+                print(f"\nError creating stock list: {e}")
             pause()
             
         elif choice == '3':
@@ -504,11 +504,11 @@ def stocklist_menu():
                 stocklist_id = int(input("Enter stock list ID to delete: "))
                 result = stock_list.delete_stock_list(stocklist_id, current_user_id)
                 if result:
-                    print(f"\n✅ Stock list {stocklist_id} deleted successfully.")
+                    print(f"\nStock list {stocklist_id} deleted successfully.")
                 else:
-                    print(f"\n❌ Stock list {stocklist_id} not found or you don't have permission to delete it.")
+                    print(f"\nStock list {stocklist_id} not found or you don't have permission to delete it.")
             except ValueError:
-                print("\n❌ Invalid stock list ID. Please enter a valid number.")
+                print("\nInvalid stock list ID. Please enter a valid number.")
             pause()
             
         elif choice == '4':
@@ -533,9 +533,9 @@ def stocklist_menu():
                     else:
                         print("This stock list is empty.")
                 else:
-                    print(f"\n❌ Stock list {stocklist_id} not found or you don't have permission to view it.")
+                    print(f"\nStock list {stocklist_id} not found or you don't have permission to view it.")
             except ValueError:
-                print("\n❌ Invalid stock list ID. Please enter a valid number.")
+                print("\nInvalid stock list ID. Please enter a valid number.")
             pause()
             
         elif choice == '5':
@@ -547,11 +547,11 @@ def stocklist_menu():
                 
                 result = stock_list.add_stock_to_list(current_user_id, stocklist_id, symbol, num_shares)
                 if result:
-                    print(f"\n✅ Successfully added {num_shares} shares of {symbol} to stock list {stocklist_id}.")
+                    print(f"\nSuccessfully added {num_shares} shares of {symbol} to stock list {stocklist_id}.")
                 else:
-                    print("\n❌ Failed to add stock to list. Check your permissions and inputs.")
+                    print("\nFailed to add stock to list. Check your permissions and inputs.")
             except ValueError:
-                print("\n❌ Invalid input. Please enter valid numbers.")
+                print("\nInvalid input. Please enter valid numbers.")
             pause()
             
         elif choice == '6':
@@ -563,11 +563,11 @@ def stocklist_menu():
                 
                 result = stock_list.remove_stock_from_list(current_user_id, stocklist_id, symbol, num_shares)
                 if result:
-                    print(f"\n✅ Successfully removed {num_shares} shares of {symbol} from stock list {stocklist_id}.")
+                    print(f"\nSuccessfully removed {num_shares} shares of {symbol} from stock list {stocklist_id}.")
                 else:
-                    print("\n❌ Failed to remove stock from list. Check your permissions and inputs.")
+                    print("\nFailed to remove stock from list. Check your permissions and inputs.")
             except ValueError:
-                print("\n❌ Invalid input. Please enter valid numbers.")
+                print("\nInvalid input. Please enter valid numbers.")
             pause()
             
         elif choice == '7':
@@ -578,15 +578,15 @@ def stocklist_menu():
                 
                 result = stock_list.share_stock_list(stocklist_id, current_user_id, friend_id)
                 if result == 1:
-                    print(f"\n✅ Stock list {stocklist_id} shared successfully with user {friend_id}.")
+                    print(f"\nStock list {stocklist_id} shared successfully with user {friend_id}.")
                 elif result == -1:
-                    print(f"\n❌ You do not own stock list {stocklist_id}.")
+                    print(f"\nYou do not own stock list {stocklist_id}.")
                 elif result == -2:
-                    print(f"\n❌ User {friend_id} is not your friend.")
+                    print(f"\nUser {friend_id} is not your friend.")
                 else:
-                    print("\n❌ Failed to share stock list. Check that you own the list and the user is your friend.")
+                    print("\nFailed to share stock list. Check that you own the list and the user is your friend.")
             except ValueError:
-                print("\n❌ Invalid input. Please enter valid numbers.")
+                print("\nInvalid input. Please enter valid numbers.")
             pause()
             
         elif choice == '8':
@@ -597,11 +597,11 @@ def stocklist_menu():
                 
                 result = stock_list.unshare_stock_list(stocklist_id, current_user_id, friend_id)
                 if result:
-                    print(f"\n✅ Stock list {stocklist_id} unshared successfully with user {friend_id}.")
+                    print(f"\nStock list {stocklist_id} unshared successfully with user {friend_id}.")
                 else:
-                    print("\n❌ Failed to unshare stock list. Check that you own the list and the user is your friend.")
+                    print("\nFailed to unshare stock list. Check that you own the list and the user is your friend.")
             except ValueError:
-                print("\n❌ Invalid input. Please enter valid numbers.")
+                print("\nInvalid input. Please enter valid numbers.")
             pause()
             
         elif choice == '9':
@@ -612,11 +612,11 @@ def stocklist_menu():
                 
                 review_id = reviews.create_review(current_user_id, stocklist_id, review_text)
                 if review_id:
-                    print(f"\n✅ Review submitted successfully with ID: {review_id}")
+                    print(f"\nReview submitted successfully with ID: {review_id}")
                 else:
-                    print("\n❌ Failed to submit review. You may have already reviewed this list or lack access.")
+                    print("\nFailed to submit review. You may have already reviewed this list or lack access.")
             except ValueError:
-                print("\n❌ Invalid stock list ID. Please enter a valid number.")
+                print("\nInvalid stock list ID. Please enter a valid number.")
             pause()
             
         elif choice == '10':
@@ -633,7 +633,7 @@ def stocklist_menu():
                 else:
                     print(f"\nNo reviews found for stock list {stocklist_id}.")
             except ValueError:
-                print("\n❌ Invalid stock list ID. Please enter a valid number.")
+                print("\nInvalid stock list ID. Please enter a valid number.")
             pause()
 
         elif choice == '11':
@@ -642,11 +642,11 @@ def stocklist_menu():
                 review_id = int(input("Enter review ID to delete: "))
                 result = reviews.delete_review(review_id, current_user_id)
                 if result:
-                    print(f"\n✅ Review {review_id} deleted successfully.")
+                    print(f"\nReview {review_id} deleted successfully.")
                 else:
-                    print(f"\n❌ Review {review_id} not found or you don't have permission to delete it.")
+                    print(f"\nReview {review_id} not found or you don't have permission to delete it.")
             except ValueError:
-                print("\n❌ Invalid review ID. Please enter a valid number.")
+                print("\nInvalid review ID. Please enter a valid number.")
             pause()
             
         elif choice == '12':
@@ -656,7 +656,7 @@ def stocklist_menu():
                 period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ")
                 # verify period
                 if period not in ['5d', '1mo', '6mo', '1y', '5y', 'all']:
-                    print("\n❌ Invalid period. Please enter a valid period.")
+                    print("\nInvalid period. Please enter a valid period.")
                     pause()
                     continue
                 graph = input("Do you want to see a graph of the stock list? (y/n): ")
@@ -692,7 +692,7 @@ def stocklist_menu():
                     plt.grid(True)
                     plt.show()
             except ValueError:
-                print("\n❌ Invalid input. Please enter valid numbers.")
+                print("\nInvalid input. Please enter valid numbers.")
             pause()
             
         elif choice == '13':
@@ -702,7 +702,7 @@ def stocklist_menu():
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 14.")
+            print("\nInvalid choice. Please enter a number between 1 and 14.")
             pause()
 
 def friends_menu():
@@ -737,19 +737,19 @@ def friends_menu():
                 result = friends.send_friend_request(current_user_id, receiver_id)
                 if result:
                     if result > 0:
-                        print(f"\n✅ Friend request sent successfully to user {receiver_id}.")
+                        print(f"\nFriend request sent successfully to user {receiver_id}.")
                     elif result == -1: # Already friends or pending request
-                        print("\n❌ You are already friends or have a pending request with this user.")
+                        print("\nYou are already friends or have a pending request with this user.")
                     elif result == -2: # Less than 5 minutes since last request
-                        print("\n❌ You can only send one request every 5 minutes.")
+                        print("\nYou can only send one request every 5 minutes.")
                     elif result == -3: # Request to self
-                        print("\n❌ You can't send a friend request to yourself.")
+                        print("\nYou can't send a friend request to yourself.")
                     else:
-                        print("\n❌ Failed to send friend request. Check if the user exists.")
+                        print("\nFailed to send friend request. Check if the user exists.")
                 else:
-                    print("\n❌ Failed to send friend request. Check if the user exists.")
+                    print("\nFailed to send friend request. Check if the user exists.")
             except ValueError:
-                print("\n❌ Invalid user ID. Please enter a valid number.")
+                print("\nInvalid user ID. Please enter a valid number.")
             pause()
             
         elif choice == '3':
@@ -780,11 +780,11 @@ def friends_menu():
                 request_id = int(input("Enter request ID to accept: "))
                 result = friends.accept_friend_request(request_id, current_user_id)
                 if result:
-                    print(f"\n✅ Friend request {request_id} accepted successfully.")
+                    print(f"\nFriend request {request_id} accepted successfully.")
                 else:
-                    print(f"\n❌ Failed to accept friend request {request_id}. Check if this request exists or is a request to you")
+                    print(f"\nFailed to accept friend request {request_id}. Check if this request exists or is a request to you")
             except ValueError:
-                print("\n❌ Invalid request ID. Please enter a valid number.")
+                print("\nInvalid request ID. Please enter a valid number.")
             pause()
             
         elif choice == '6':
@@ -793,11 +793,11 @@ def friends_menu():
                 request_id = int(input("Enter request ID to reject: "))
                 result = friends.reject_friend_request(request_id, current_user_id)
                 if result:
-                    print(f"\n✅ Friend request {request_id} rejected successfully.")
+                    print(f"\nFriend request {request_id} rejected successfully.")
                 else:
-                    print(f"\n❌ Failed to reject friend request {request_id}.")
+                    print(f"\nFailed to reject friend request {request_id}.")
             except ValueError:
-                print("\n❌ Invalid request ID. Please enter a valid number.")
+                print("\nInvalid request ID. Please enter a valid number.")
             pause()
             
         elif choice == '7':
@@ -806,18 +806,18 @@ def friends_menu():
                 friend_id = int(input("Enter user ID of friend to delete: "))
                 result = friends.delete_friend(current_user_id, friend_id)
                 if result:
-                    print(f"\n✅ Friend {friend_id} deleted successfully.")
+                    print(f"\nFriend {friend_id} deleted successfully.")
                 else:
-                    print(f"\n❌ Failed to delete friend {friend_id}. Check if this user is actually your friend.")
+                    print(f"\nFailed to delete friend {friend_id}. Check if this user is actually your friend.")
             except ValueError:
-                print("\n❌ Invalid user ID. Please enter a valid number.")
+                print("\nInvalid user ID. Please enter a valid number.")
             pause()
             
         elif choice == '8':
             return
             
         else:
-            print("\n❌ Invalid choice. Please enter a number between 1 and 8.")
+            print("\nInvalid choice. Please enter a number between 1 and 8.")
             pause()
 
 def stock_info_menu():
@@ -838,7 +838,7 @@ def stock_info_menu():
             period = input("Enter period (5d, 1mo, 6mo, 1y, 5y, all): ")
             # verify period
             if period not in ['5d', '1mo', '6mo', '1y', '5y', 'all']:
-                print("\n❌ Invalid period. Please enter a valid period.")
+                print("\nInvalid period. Please enter a valid period.")
                 pause()
                 continue
             graph = input("Do you want to see a graph of the stock? (y/n): ")
@@ -859,9 +859,9 @@ def stock_info_menu():
             num_days = int(input("Enter number of days to fetch (1-365): "))
             result = stock_data.fetch_and_store_daily_info_yahoo(symbol, num_days)
             if result:
-                print(f"\n✅ Successfully fetched and stored {num_days} days of data for {symbol}.")
+                print(f"\nSuccessfully fetched and stored {num_days} days of data for {symbol}.")
             else:
-                print(f"\n❌ Failed to fetch information for {symbol}. Make sure it's a valid symbol.")
+                print(f"\nFailed to fetch information for {symbol}. Make sure it's a valid symbol.")
             pause()
 
         elif choice == '3':
@@ -869,9 +869,9 @@ def stock_info_menu():
             num_days = int(input("Enter number of days to fetch (1-365): "))
             result = stock_data.fetch_and_store_all_stocks_daily_info(num_days)
             if result:
-                print(f"\n✅ Successfully fetched and stored {num_days} days of data for all stocks.")
+                print(f"\nSuccessfully fetched and stored {num_days} days of data for all stocks.")
             else:
-                print(f"\n❌ Failed to fetch information for all stocks.")
+                print(f"\nFailed to fetch information for all stocks.")
             pause()
             
         elif choice == "4":
@@ -933,18 +933,18 @@ def delete_account_menu():
             result = auth.login(current_username, password)
             if result and result[0] == current_user_id:
                 if auth.delete_account(current_user_id):
-                    print("\n✅ Account deleted successfully.")
+                    print("\nAccount deleted successfully.")
                     current_user_id = None
                     current_username = None
                 else:
-                    print("\n❌ Failed to delete account. Please try again later.")
+                    print("\nFailed to delete account. Please try again later.")
                 break
             else:
                 attempts += 1
                 if attempts < max_attempts:
-                    print(f"\n❌ Incorrect password. {max_attempts - attempts} attempts remaining.")
+                    print(f"\nIncorrect password. {max_attempts - attempts} attempts remaining.")
                 else:
-                    print("\n❌ Too many incorrect attempts. Account deletion cancelled.")
+                    print("\nToo many incorrect attempts. Account deletion cancelled.")
     else:
         print("\nAccount deletion cancelled.")
     
@@ -964,10 +964,10 @@ def setup_db(load_stock_history = False):
             cursor.execute(query)
         
         conn.commit()
-        print("✅ Initial Database setup complete!")
+        print("Initial Database setup complete!")
         
     except psycopg2.Error as e:
-        print(f"❌ Database setup failed: {e}")
+        print(f"Database setup failed: {e}")
         sys.exit(1)
 
     if not load_stock_history:
@@ -978,9 +978,9 @@ def setup_db(load_stock_history = False):
         conn.commit()
         cursor.close()
         conn.close()
-        print("✅ Database setup complete!")
+        print("Database setup complete!")
     except psycopg2.Error as e:
-        print(f"❌ Loading stock history from VM has failed: {e}")
+        print(f"Loading stock history from VM has failed: {e}")
         print(f"Attemping to load stock history from local")
         conn.rollback()
         try:
@@ -989,10 +989,10 @@ def setup_db(load_stock_history = False):
             conn.commit()
             cursor.close()
             conn.close()
-            print("✅ Database setup complete!")
+            print("Database setup complete!")
         except Exception as e:
             conn.rollback()
-            print(f"❌ Loading stock history from local has failed: {e}")
+            print(f"Loading stock history from local has failed: {e}")
             sys.exit(1)
 
 
