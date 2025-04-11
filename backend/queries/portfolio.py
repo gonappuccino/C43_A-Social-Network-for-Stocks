@@ -7,7 +7,7 @@ from typing import Optional, Dict, Tuple, List
 class Portfolio:
     conn = psycopg2.connect(
         host='34.130.75.185',
-        database='postgres',
+        database='template1',
         user='postgres',
         password='2357'
     )
@@ -182,10 +182,6 @@ class Portfolio:
         return result
     
     def sell_stock_shares(self, user_id, portfolio_id, symbol, num_shares):
-        """
-        Decrease shares without dropping below zero.
-        If resulting shares == 0, remove the record.
-        """
         cursor = self.conn.cursor()
 
         is_owner_query = '''
@@ -300,9 +296,6 @@ class Portfolio:
         return portfolio_data
 
     def view_portfolio_transactions(self, user_id, portfolio_id):
-        """
-        View all transactions for a given portfolio.
-        """
         cursor = self.conn.cursor()
         is_owner_query = '''
             SELECT 1
@@ -327,10 +320,6 @@ class Portfolio:
         return transactions
 
     def compute_portfolio_value(self, user_id, portfolio_id):
-        """
-        Returns the total current market value of the given portfolio, 
-        including its cash balance and the latest stock prices.
-        """
         cursor = self.conn.cursor()
         is_owner_query = '''
             SELECT 1
@@ -392,9 +381,6 @@ class Portfolio:
         return total_value
 
     def view_user_portfolios(self, user_id):
-        """
-        Return all portfolios owned by the specified user.
-        """
         cursor = self.conn.cursor()
         query = '''
             SELECT p.portfolio_id, p.portfolio_name, p.cash_balance, 
@@ -412,23 +398,7 @@ class Portfolio:
         return portfolios 
 
     def compute_portfolio_analytics(self, user_id, portfolio_id, start_date=None, end_date=None):
-        """
-        Compute portfolio analytics including coefficient of variation, Beta, and covariance/correlation matrix.
-        All calculations are performed in SQL.
-        
-        Args:
-            user_id: The user ID
-            portfolio_id: The portfolio ID
-            start_date: Start date for analysis (default: max possible range for portfolio stocks)
-            end_date: End date for analysis (default: max possible range for portfolio stocks)
-            
-        Returns:
-            Dictionary containing:
-            - stock_analytics: List of dicts with CV and Beta for each stock
-            - correlation_matrix: Nested dict representing the correlation matrix
-            - covariance_matrix: Nested dict representing the covariance matrix
-            - date_range: Dict with 'start' and 'end' dates used for analysis
-        """
+
         cursor = self.conn.cursor()
         
         # Check if user has access to portfolio
@@ -660,17 +630,7 @@ class Portfolio:
         } 
 
     def view_portfolio_history(self, user_id, portfolio_id, period='all'):
-        """
-        Return the historical value of a portfolio over time, calculated using the current holdings.
-        
-        Args:
-            user_id: The ID of the user requesting the history
-            portfolio_id: The ID of the portfolio to analyze
-            period: Time period to filter data ('5d', '1mo', '6mo', '1y', '5y', 'all')
-            
-        Returns:
-            List of tuples containing (timestamp, total_value) ordered by timestamp ascending
-        """
+
         cursor = self.conn.cursor()
         
         # Check if user has access to portfolio
@@ -783,19 +743,7 @@ class Portfolio:
         return history 
 
     def predict_portfolio_value(self, user_id: int, portfolio_id: int, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
-        """
-        Predict the future value of a portfolio.
-        
-        Args:
-            user_id: The user ID
-            portfolio_id: The portfolio ID
-            days_to_predict: Number of days to predict into the future
-            
-        Returns:
-            Tuple containing:
-            - List of predicted values (date, value)
-            - Confidence score (0-1)
-        """
+
         cursor = self.conn.cursor()
         
         # Check if user has access to portfolio

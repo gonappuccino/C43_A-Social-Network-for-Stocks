@@ -7,7 +7,7 @@ from typing import List, Dict, Tuple
 class StockList:
     conn = psycopg2.connect(
         host='34.130.75.185',
-        database='postgres',
+        database='template1',
         user='postgres',
         password='2357'
     )
@@ -44,9 +44,7 @@ class StockList:
             raise e
     
     def delete_stock_list(self, stocklist_id, user_id):
-        """
-        Delete a stock list by its ID, but only if the specified user is the owner.
-        """
+
         cursor = self.conn.cursor()
         
         # Check if the user is the creator or has 'owner' role
@@ -104,10 +102,7 @@ class StockList:
         return result
 
     def remove_stock_from_list(self, user_id, stocklist_id, symbol, num_shares):
-        """
-        Decrease shares without dropping below zero.
-        If resulting shares == 0, remove the record.
-        """
+
         cursor = self.conn.cursor()
 
         is_owner_query = '''
@@ -162,9 +157,7 @@ class StockList:
             return result
 
     def view_stock_list(self, user_id, stocklist_id):
-        """
-        Return all stocks in the specified list, including the creator's ID.
-        """
+
         accessible_stock_lists = self.view_accessible_stock_lists(user_id)
         if not any([lst[0] == stocklist_id for lst in accessible_stock_lists]):
             return None
@@ -184,10 +177,7 @@ class StockList:
         return stocklist_data
 
     def share_stock_list(self, stocklist_id, owner_id, friend_id):
-        """
-        Share an existing stock list with a friend. Must verify that the person
-        sharing the list is the owner
-        """
+
         cursor = self.conn.cursor()
         # Check if the caller actually owns this list or is in owner role
         check_owner_query = '''
@@ -222,14 +212,7 @@ class StockList:
         return 1
 
     def unshare_stock_list(self, stocklist_id, owner_id, friend_id):
-        """
-        Remove access to a stock list for a specific friend.
-        Must verify that 'owner_id' is indeed the list's creator or has 'owner' role.
-        
-        Returns:
-        - True: If unsharing was successful
-        - None: If owner_id is not the owner or friend_id had no access
-        """
+
         cursor = self.conn.cursor()
         # Check if the caller actually owns this list
         check_owner_query = '''
@@ -257,11 +240,7 @@ class StockList:
         return result is not None
 
     def view_accessible_stock_lists(self, user_id):
-        """
-        Return all stock lists that the user can see:
-          - Lists in StockListAccess where user_id matches
-          - Any StockLists marked is_public = TRUE
-        """
+
         cursor = self.conn.cursor()
         query = '''
             SELECT DISTINCT sl.stocklist_id,
@@ -288,10 +267,6 @@ class StockList:
         return results
 
     def view_user_owned_stock_lists(self, user_id):
-        """
-        Return all stock lists owned by the specified user (not just accessible).
-        This includes lists where the user is the creator or has 'owner' access role.
-        """
         cursor = self.conn.cursor()
         query = '''
             SELECT DISTINCT sl.stocklist_id, 
@@ -313,10 +288,7 @@ class StockList:
         return stock_lists
 
     def compute_stock_list_value(self, user_id, stocklist_id):
-        """
-        Returns the total current market value of the given stock list,
-        calculated using the latest stock prices.
-        """
+
         cursor = self.conn.cursor()
         
         # Check if user has access to this stock list
@@ -354,17 +326,7 @@ class StockList:
         return stock_value 
 
     def view_stock_list_history(self, user_id, stocklist_id, period='all'):
-        """
-        Return the historical value of a stock list over time, calculated using the current holdings.
-        
-        Args:
-            user_id: The ID of the user requesting the history
-            stocklist_id: The ID of the stock list to analyze
-            period: Time period to filter data ('5d', '1mo', '6mo', '1y', '5y', 'all')
-            
-        Returns:
-            List of tuples containing (timestamp, total_value) ordered by timestamp ascending
-        """
+
         cursor = self.conn.cursor()
         
         # Check if user has access to stock list
@@ -468,19 +430,7 @@ class StockList:
         return history 
 
     def predict_stock_list_value(self, user_id: int, stocklist_id: int, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
-        """
-        Predict the future value of a stock list.
-        
-        Args:
-            user_id: The user ID
-            stocklist_id: The stock list ID
-            days_to_predict: Number of days to predict into the future
-            
-        Returns:
-            Tuple containing:
-            - List of predicted values (date, value)
-            - Confidence score (0-1)
-        """
+
         cursor = self.conn.cursor()
         
         # Check if user has access to stock list

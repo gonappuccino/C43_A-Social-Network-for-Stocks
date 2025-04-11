@@ -5,17 +5,13 @@ from queries.stock_list import StockList
 class Reviews:
     conn = psycopg2.connect(
         host='34.130.75.185',
-        database='postgres',
+        database='template1',
         user='postgres',
         password='2357'
     )
     stock_list = StockList()
 
     def create_review(self, user_id, stocklist_id, review_text):
-        """
-        Write a new review for a stock list, if the user does not have one already
-        and has access to the stock list (public or shared/owner). 
-        """
 
         if len(review_text) > 4000:
             return None
@@ -52,9 +48,7 @@ class Reviews:
         return new_review_id
 
     def update_review(self, review_id, user_id, new_text):
-        """
-        Edit a review if the user is the author. 
-        """
+
         cursor = self.conn.cursor()
         # 1) Check if user is indeed the author
         check_query = '''
@@ -83,9 +77,6 @@ class Reviews:
         return updated
 
     def delete_review(self, review_id, user_id):
-        """
-        Delete the review if the user is the author or the creator of the stock list.
-        """
         cursor = self.conn.cursor()
         # 1) Get the user_id of the review's author + the stocklist's creator
         check_query = '''

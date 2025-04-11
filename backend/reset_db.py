@@ -7,7 +7,7 @@ from queries.setup import (
 
 # Database connection parameters
 DB_HOST = '34.130.75.185'
-DB_NAME = 'postgres'
+DB_NAME = 'template1'
 DB_USER = 'postgres'
 DB_PASSWORD = '2357'
 

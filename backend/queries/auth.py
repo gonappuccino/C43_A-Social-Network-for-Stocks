@@ -4,7 +4,7 @@ import re
 class Auth:
     conn = psycopg2.connect(
         host='34.130.75.185',
-        database='postgres',
+        database='template1',
         user='postgres',
         password='2357'
     )
@@ -41,16 +41,7 @@ class Auth:
         return True
 
     def delete_account(self, user_id):
-        """
-        Delete a user account and all associated data.
-        Due to CASCADE constraints, this will automatically delete:
-        - All friend requests
-        - All stock lists owned by the user
-        - All portfolios owned by the userS
-        - All portfolio transactions
-        - All reviews created by the user
-        - All stock list access permissions
-        """
+
         try:
             cursor = self.conn.cursor()
             # Delete the user (cascade will handle related data)

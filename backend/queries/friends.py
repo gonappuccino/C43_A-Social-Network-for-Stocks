@@ -4,16 +4,12 @@ from queries.utils import decimal_to_float as d2f
 class Friends:
     conn = psycopg2.connect(
         host='34.130.75.185',
-        database='postgres',
+        database='template1',
         user='postgres',
         password='2357'
     )
 
     def send_friend_request(self, sender_id, receiver_id):
-        """
-        Insert a new friend request if it does not exist, or if the previous
-        one was rejected more than 5 minutes ago. Otherwise do nothing.
-        """
 
         if sender_id == receiver_id:
             return -3
@@ -76,9 +72,6 @@ class Friends:
             return new_id
 
     def view_friends(self, user_id):
-        """
-        Return a list of user_ids who are friends with the given user (status = accepted).
-        """
         cursor = self.conn.cursor()
         query = '''
             SELECT 
@@ -96,9 +89,6 @@ class Friends:
         return friends
 
     def view_incoming_requests(self, user_id):
-        """
-        Return all pending friend requests where this user is the receiver.
-        """
         cursor = self.conn.cursor()
         query = '''
             SELECT request_id, sender_id, u.username AS sender_name
@@ -112,9 +102,6 @@ class Friends:
         return incoming
 
     def view_outgoing_requests(self, user_id):
-        """
-        Return all pending friend requests where this user is the sender.
-        """
         cursor = self.conn.cursor()
         query = '''
             SELECT request_id, receiver_id, u.username AS receiver_name
@@ -128,10 +115,6 @@ class Friends:
         return outgoing
 
     def accept_friend_request(self, request_id, user_id):
-        """
-        Accept a friend request by setting status to 'accepted'.
-        We only allow the receiver to accept the request.
-        """
         cursor = self.conn.cursor()
         query = '''
             UPDATE FriendRequest
@@ -149,10 +132,6 @@ class Friends:
         return result
 
     def reject_friend_request(self, request_id, user_id):
-        """
-        Reject a friend request by setting status to 'rejected'.
-        Receiver or sender can reject the request.
-        """
         cursor = self.conn.cursor()
         query = '''
             UPDATE FriendRequest
@@ -170,12 +149,7 @@ class Friends:
         return result
 
     def delete_friend(self, user_id, friend_id):
-        """
-        If two users are friends, update the row to 'rejected' so a new request
-        can be sent later, following the same 5-minute rule.
-        
-        Also removes access to all non-public stock lists that were shared between them.
-        """
+
         cursor = self.conn.cursor()
         # First update the friendship status
         query = '''

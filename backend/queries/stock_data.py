@@ -11,16 +11,12 @@ from typing import Tuple, List, Dict
 class StockData:
     conn = psycopg2.connect(
         host='34.130.75.185',
-        database='postgres',
+        database='template1',
         user='postgres',
         password='2357'
     )
 
     def fetch_and_store_daily_info_yahoo(self, symbol, num_days=1):
-        """
-        Fetch stock info from Yahoo Finance and adjust prices based on the ratio between
-        our last known price and Yahoo Finance's price for the same date.
-        """
         cursor = self.conn.cursor()
         
         # Verify symbol exists in Stocks table
@@ -135,15 +131,7 @@ class StockData:
         return inserted_count
 
     def fetch_and_store_all_stocks_daily_info(self, num_days=1):
-        """
-        Fetch and store daily info for all stocks in the Stocks table.
-        
-        Args:
-            num_days: Number of days to fetch for each stock (default: 1)
-            
-        Returns:
-            Dictionary mapping symbols to number of days inserted/updated
-        """
+
         cursor = self.conn.cursor()
         
         # Get all stock symbols
@@ -174,17 +162,7 @@ class StockData:
         return results
     
     def fetch_and_store_spy_info_between_dates(self, start_date, end_date):
-        """
-        Fetch SPY (S&P 500 ETF) data from Yahoo Finance between the specified dates
-        and store it in the database.
-        
-        Args:
-            start_date: Start date for data fetch (datetime.date)
-            end_date: End date for data fetch (datetime.date)
-            
-        Returns:
-            Number of days inserted/updated, or None if error
-        """
+
         cursor = self.conn.cursor()
         
         try:
@@ -245,14 +223,7 @@ class StockData:
             return None
 
     def view_stock_info(self, symbol, period='all', graph=False):
-        """
-        Return merged historical data from StocksHistory plus any daily data
-        from DailyStockInfo for the specified symbol, ordered by date descending.
-        
-        Args:
-            symbol: The stock symbol to query
-            period: Time period to filter data ('5d', '1mo', '6mo', '1y', '5y', 'all')
-        """
+
         cursor = self.conn.cursor()
         
         # Calculate the start date based on period
@@ -307,13 +278,6 @@ class StockData:
         return data
 
     def display_stock_chart(self, symbol, period='all'):
-        """
-        Display a candlestick chart for the given stock symbol.
-        
-        Args:
-            symbol: The stock symbol to chart
-            period: Time period to display ('5d', '1mo', '6mo', '1y', '5y', 'all')
-        """
         
         # Get stock data
         stock_data = self.view_stock_info(symbol, period)
@@ -351,18 +315,7 @@ class StockData:
         return df 
 
     def predict_stock_price(self, symbol: str, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
-        """
-        Predict the future price of a stock.
-        
-        Args:
-            symbol: The stock symbol
-            days_to_predict: Number of days to predict into the future
-            
-        Returns:
-            Tuple containing:
-            - List of predicted prices (date, price)
-            - Confidence score (0-1)
-        """
+
         cursor = self.conn.cursor()
         
         # Get historical data
