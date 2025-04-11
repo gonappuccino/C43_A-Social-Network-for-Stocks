@@ -165,7 +165,7 @@ class Portfolio:
             VALUES (%s, %s, %s)
             ON CONFLICT (portfolio_id, symbol)
             DO UPDATE SET num_shares = PortfolioStocks.num_shares + EXCLUDED.num_shares
-            RETURNING portfolio_entry_id, num_shares;
+            RETURNING num_shares;
         '''
         cursor.execute(query, (portfolio_id, symbol, num_shares))
         result = cursor.fetchone()
@@ -222,7 +222,7 @@ class Portfolio:
             delete_query = '''
                 DELETE FROM PortfolioStocks
                  WHERE portfolio_id = %s AND symbol = %s
-                RETURNING portfolio_entry_id;
+                RETURNING num_shares;
             '''
             cursor.execute(delete_query, (portfolio_id, symbol))
             result = cursor.fetchone()
@@ -232,7 +232,7 @@ class Portfolio:
                 UPDATE PortfolioStocks
                    SET num_shares = num_shares - %s
                  WHERE portfolio_id = %s AND symbol = %s
-                RETURNING portfolio_entry_id, num_shares;
+                RETURNING num_shares;
             '''
             cursor.execute(update_query, (num_shares, portfolio_id, symbol))
             result = cursor.fetchone()

@@ -95,7 +95,7 @@ class StockList:
             VALUES (%s, %s, %s)
             ON CONFLICT (stocklist_id, symbol)
             DO UPDATE SET num_shares = StockListStocks.num_shares + EXCLUDED.num_shares
-            RETURNING list_entry_id, num_shares;
+            RETURNING num_shares;
         '''
         cursor.execute(query, (stocklist_id, symbol, num_shares))
         result = cursor.fetchone()
@@ -141,7 +141,7 @@ class StockList:
             delete_query = '''
                 DELETE FROM StockListStocks
                  WHERE stocklist_id = %s AND symbol = %s
-                RETURNING list_entry_id;
+                RETURNING num_shares;
             '''
             cursor.execute(delete_query, (stocklist_id, symbol))
             result = cursor.fetchone()
@@ -153,7 +153,7 @@ class StockList:
                 UPDATE StockListStocks
                    SET num_shares = num_shares - %s
                  WHERE stocklist_id = %s AND symbol = %s
-                RETURNING list_entry_id, num_shares;
+                RETURNING num_shares;
             '''
             cursor.execute(update_query, (num_shares, stocklist_id, symbol))
             result = cursor.fetchone()

@@ -54,11 +54,10 @@ create_stocks = '''
 
 create_stock_list_stocks = '''
     CREATE TABLE IF NOT EXISTS StockListStocks (
-        list_entry_id SERIAL PRIMARY KEY,
         stocklist_id INT REFERENCES StockLists(stocklist_id) ON DELETE CASCADE,
         symbol VARCHAR(10) REFERENCES Stocks(symbol) ON DELETE CASCADE,
         num_shares INT NOT NULL,
-        UNIQUE (stocklist_id, symbol)
+        PRIMARY KEY (stocklist_id, symbol)
     );
 '''
 
@@ -75,11 +74,10 @@ create_portfolios = '''
 
 create_portfolio_stocks = '''
     CREATE TABLE IF NOT EXISTS PortfolioStocks (
-        portfolio_entry_id SERIAL PRIMARY KEY,
         portfolio_id INT REFERENCES Portfolios(portfolio_id) ON DELETE CASCADE,
         symbol VARCHAR(10) REFERENCES Stocks(symbol) ON DELETE CASCADE,
         num_shares INT NOT NULL,
-        UNIQUE (portfolio_id, symbol)
+        PRIMARY KEY (portfolio_id, symbol)
     );
 ''' 
 
