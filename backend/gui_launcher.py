@@ -317,6 +317,18 @@ class MainAppFrame(ttk.Frame):
         graph_frame = ttk.LabelFrame(self.portfolio_tab, text="Portfolio Performance", padding="10")
         graph_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
+        # Add time period selector above the graph
+        period_frame = ttk.Frame(graph_frame)
+        period_frame.pack(fill="x", padx=5, pady=5)
+        
+        ttk.Label(period_frame, text="Time Period:").pack(side="left", padx=5)
+        self.portfolio_period_var = tk.StringVar(value="1mo")
+        period_combo = ttk.Combobox(period_frame, textvariable=self.portfolio_period_var, 
+                                  values=["5d", "1mo", "6mo", "1y", "5y", "all"],
+                                  state="readonly", width=10)
+        period_combo.pack(side="left", padx=5)
+        period_combo.bind('<<ComboboxSelected>>', lambda e: self.update_performance_graph())
+
         # Create matplotlib figure for portfolio performance
         self.figure = plt.Figure(figsize=(6, 4))
         self.ax = self.figure.add_subplot(111)
@@ -1344,7 +1356,7 @@ class MainAppFrame(ttk.Frame):
             historical_data = self.controller.portfolio.view_portfolio_history(
                 self.controller.current_user_id,
                 portfolio_id,
-                period='1mo'  # Show last month of data
+                period=self.portfolio_period_var.get()  # Use portfolio-specific period var
             )
             
             if not historical_data:
@@ -1357,23 +1369,24 @@ class MainAppFrame(ttk.Frame):
             dates = [entry[0] for entry in historical_data]  # timestamp
             values = [float(entry[1]) for entry in historical_data]  # total_value
             
+            # Plot the data
             self.ax.plot(dates, values, '-b')
-            self.ax.set_title('Portfolio Value Over Time')
+            self.ax.set_title(f'Portfolio Value Over Time - {self.portfolio_period_var.get()}')
             self.ax.set_xlabel('Date')
             self.ax.set_ylabel('Value ($)')
             self.ax.grid(True)
             
             # Rotate x-axis labels for better readability
-            plt.setp(self.ax.get_xticklabels(), rotation=45)
+            plt.setp(self.ax.get_xticklabels(), rotation=45, ha='right')
             
-            # Adjust layout to prevent label cutoff
-            self.figure.tight_layout()
-            
-            # Refresh canvas
+            # Redraw the canvas
             self.canvas.draw()
-
+            
         except Exception as e:
-            print(f"Error updating performance graph: {str(e)}")
+            print(f"Error in update_performance_graph: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Error", f"Failed to update performance graph: {str(e)}")
 
     def delete_account(self):
         if messagebox.askyesno("Delete Account", "WARNING: This action is permanent and cannot be undone. Are you sure you want to delete your account?"):
