@@ -12,7 +12,17 @@ class Portfolio:
         password='2357'
     )
 
+    def ensure_connection(self):
+        if self.conn.closed:
+            self.conn = psycopg2.connect(
+                host='34.130.75.185',
+                database='template1',
+                user='postgres',
+                password='2357'
+            )
     def create_portfolio(self, user_id, portfolio_name, initial_cash=0):
+
+        self.ensure_connection()
         try:
             user_id = int(user_id)  # Ensure integer conversion
             initial_cash = float(initial_cash)  # Ensure float conversion
@@ -34,9 +44,8 @@ class Portfolio:
             raise e
         
     def delete_portfolio(self, portfolio_id, user_id):
-        """
-        Delete a portfolio by its ID, but only if the specified user is the owner.
-        """
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Proceed with deletion
@@ -52,6 +61,8 @@ class Portfolio:
         return deleted_id
 
     def update_cash_balance(self, user_id, portfolio_id, amount, record_transaction=True):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         is_owner_query = '''
             SELECT 1
@@ -104,6 +115,8 @@ class Portfolio:
         return updated_balance
     
     def get_cash_balance(self, portfolio_id, user_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         query = '''
             SELECT cash_balance
@@ -120,6 +133,8 @@ class Portfolio:
         return cash_balance
 
     def buy_stock_shares(self, user_id, portfolio_id, symbol, num_shares):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
 
         is_owner_query = '''
@@ -182,6 +197,8 @@ class Portfolio:
         return result
     
     def sell_stock_shares(self, user_id, portfolio_id, symbol, num_shares):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
 
         is_owner_query = '''
@@ -273,6 +290,8 @@ class Portfolio:
         return result
 
     def view_portfolio(self, user_id, portfolio_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         is_owner_query = '''
             SELECT 1
@@ -296,6 +315,8 @@ class Portfolio:
         return portfolio_data
 
     def view_portfolio_transactions(self, user_id, portfolio_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         is_owner_query = '''
             SELECT 1
@@ -320,6 +341,8 @@ class Portfolio:
         return transactions
 
     def compute_portfolio_value(self, user_id, portfolio_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         is_owner_query = '''
             SELECT 1
@@ -389,6 +412,8 @@ class Portfolio:
         return total_value
 
     def view_user_portfolios(self, user_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         query = '''
             SELECT p.portfolio_id, p.portfolio_name, p.cash_balance, 
@@ -407,6 +432,7 @@ class Portfolio:
 
     def compute_portfolio_analytics(self, user_id, portfolio_id, start_date=None, end_date=None):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Check if user has access to portfolio
@@ -639,6 +665,8 @@ class Portfolio:
         } 
 
     def view_portfolio_history(self, user_id, portfolio_id, period='all'):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Check if user has access to portfolio
@@ -751,6 +779,7 @@ class Portfolio:
 
     def predict_portfolio_value(self, user_id: int, portfolio_id: int, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Check if user has access to portfolio

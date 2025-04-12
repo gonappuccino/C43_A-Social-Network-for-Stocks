@@ -9,7 +9,17 @@ class Auth:
         password='2357'
     )
 
+    def ensure_connection(self):
+        if self.conn.closed:
+            self.conn = psycopg2.connect(
+                host='34.130.75.185',
+                database='template1',
+                user='postgres',
+                password='2357'
+            )
+
     def register(self, username, password, email):
+        self.ensure_connection()
         # Verify username, password and email are valid
         if not username or len(username) == 0:
             return False
@@ -31,6 +41,7 @@ class Auth:
         return True
 
     def login(self, email, password):
+        self.ensure_connection()
         cursor = self.conn.cursor()
         cursor.execute("SELECT user_id FROM Users WHERE email=%s AND password=%s", (email, password))
         user_id = cursor.fetchone()
@@ -41,7 +52,7 @@ class Auth:
         return True
 
     def delete_account(self, user_id):
-
+        self.ensure_connection()
         try:
             cursor = self.conn.cursor()
             # Delete the user (cascade will handle related data)

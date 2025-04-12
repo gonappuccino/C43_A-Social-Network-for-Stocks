@@ -9,8 +9,18 @@ class Friends:
         password='2357'
     )
 
+    def ensure_connection(self):
+        if self.conn.closed:
+            self.conn = psycopg2.connect(
+                host='34.130.75.185',
+                database='template1',
+                user='postgres',
+                password='2357'
+            )
+
     def send_friend_request(self, sender_id, receiver_id):
 
+        self.ensure_connection()
         if sender_id == receiver_id:
             return -3
         cursor = self.conn.cursor()
@@ -72,6 +82,8 @@ class Friends:
             return new_id
 
     def view_friends(self, user_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         query = '''
             SELECT 
@@ -89,6 +101,8 @@ class Friends:
         return friends
 
     def view_incoming_requests(self, user_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         query = '''
             SELECT request_id, sender_id, u.username AS sender_name
@@ -102,6 +116,8 @@ class Friends:
         return incoming
 
     def view_outgoing_requests(self, user_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         query = '''
             SELECT request_id, receiver_id, u.username AS receiver_name
@@ -115,6 +131,8 @@ class Friends:
         return outgoing
 
     def accept_friend_request(self, request_id, user_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         query = '''
             UPDATE FriendRequest
@@ -132,6 +150,8 @@ class Friends:
         return result
 
     def reject_friend_request(self, request_id, user_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         query = '''
             UPDATE FriendRequest
@@ -150,6 +170,7 @@ class Friends:
 
     def delete_friend(self, user_id, friend_id):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         # First update the friendship status
         query = '''

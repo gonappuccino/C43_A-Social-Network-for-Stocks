@@ -16,7 +16,17 @@ class StockData:
         password='2357'
     )
 
+    def ensure_connection(self):
+        if self.conn.closed:
+            self.conn = psycopg2.connect(
+                host='34.130.75.185',
+                database='template1',
+                user='postgres',
+                password='2357'
+            )
+
     def fetch_and_store_daily_info_yahoo(self, symbol, num_days=1):
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Verify symbol exists in Stocks table
@@ -132,6 +142,7 @@ class StockData:
 
     def fetch_and_store_all_stocks_daily_info(self, num_days=1):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Get all stock symbols
@@ -163,6 +174,7 @@ class StockData:
     
     def fetch_and_store_spy_info_between_dates(self, start_date, end_date):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         try:
@@ -224,6 +236,7 @@ class StockData:
 
     def view_stock_info(self, symbol, period='all', graph=False):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Calculate the start date based on period
@@ -316,6 +329,7 @@ class StockData:
 
     def predict_stock_price(self, symbol: str, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Get historical data

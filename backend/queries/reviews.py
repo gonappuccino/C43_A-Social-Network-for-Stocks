@@ -11,8 +11,18 @@ class Reviews:
     )
     stock_list = StockList()
 
+    def ensure_connection(self):
+        if self.conn.closed:
+            self.conn = psycopg2.connect(
+                host='34.130.75.185',
+                database='template1',
+                user='postgres',
+                password='2357'
+            )
+
     def create_review(self, user_id, stocklist_id, review_text):
 
+        self.ensure_connection()
         if len(review_text) > 4000:
             return None
         cursor = self.conn.cursor()
@@ -49,6 +59,7 @@ class Reviews:
 
     def update_review(self, review_id, user_id, new_text):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         # 1) Check if user is indeed the author
         check_query = '''
@@ -77,6 +88,8 @@ class Reviews:
         return updated
 
     def delete_review(self, review_id, user_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         # 1) Get the user_id of the review's author + the stocklist's creator
         check_query = '''
@@ -111,6 +124,7 @@ class Reviews:
 
     def view_reviews(self, stocklist_id, user_id):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
 
         # check access

@@ -13,7 +13,17 @@ class StockList:
     )
     friends = Friends()
 
+    def ensure_connection(self):
+        if self.conn.closed:
+            self.conn = psycopg2.connect(
+                host='34.130.75.185',
+                database='template1',
+                user='postgres',
+                password='2357'
+            )
+
     def create_stock_list(self, creator_id, list_name, is_public=False):
+        self.ensure_connection()
         try:
             creator_id = int(creator_id)  # Ensure integer conversion
             is_public = bool(is_public)  # Ensure boolean conversion
@@ -45,6 +55,7 @@ class StockList:
     
     def delete_stock_list(self, stocklist_id, user_id):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Check if the user is the creator or has 'owner' role
@@ -75,6 +86,8 @@ class StockList:
         return deleted_id
     
     def add_stock_to_list(self, user_id, stocklist_id, symbol, num_shares):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
 
         try:
@@ -121,6 +134,7 @@ class StockList:
 
     def remove_stock_from_list(self, user_id, stocklist_id, symbol, num_shares):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
 
         is_owner_query = '''
@@ -195,6 +209,7 @@ class StockList:
 
     def share_stock_list(self, stocklist_id, owner_id, friend_id):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         # Check if the caller actually owns this list or is in owner role
         check_owner_query = '''
@@ -230,6 +245,7 @@ class StockList:
 
     def unshare_stock_list(self, stocklist_id, owner_id, friend_id):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         # Check if the caller actually owns this list
         check_owner_query = '''
@@ -258,6 +274,7 @@ class StockList:
 
     def view_accessible_stock_lists(self, user_id):
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         query = '''
             SELECT DISTINCT sl.stocklist_id,
@@ -284,6 +301,8 @@ class StockList:
         return results
 
     def view_user_owned_stock_lists(self, user_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         query = '''
             SELECT DISTINCT sl.stocklist_id, 
@@ -305,6 +324,8 @@ class StockList:
         return stock_lists
 
     def compute_stock_list_value(self, user_id, stocklist_id):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Check if user has access to this stock list
@@ -351,7 +372,8 @@ class StockList:
         return stock_value
 
     def view_stock_list_history(self, user_id, stocklist_id, period='all'):
-
+        
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Check if user has access to stock list
@@ -456,6 +478,7 @@ class StockList:
 
     def predict_stock_list_value(self, user_id: int, stocklist_id: int, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
 
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Check if user has access to stock list
@@ -532,6 +555,8 @@ class StockList:
         return model.predict_stock_list_value(list_data, days_to_predict) 
 
     def compute_stock_list_analytics(self, user_id, stocklist_id, start_date=None, end_date=None):
+
+        self.ensure_connection()
         cursor = self.conn.cursor()
         
         # Check if user has access to stock list
