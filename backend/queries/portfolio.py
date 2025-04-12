@@ -346,7 +346,6 @@ class Portfolio:
 
         # stock value
         # latest close stock price for each stock in the portfolio multiplied by num shares
-        # coalesce to 0 if no shares
         value_query = '''
             WITH latest_prices AS (
                 SELECT 
@@ -361,23 +360,20 @@ class Portfolio:
             ),
             current_prices AS (
                 SELECT 
-                    sh.symbol,
-                    COALESCE(sh.close, dsi.close) as close_price
+                    lp.symbol,
+                    COALESCE(
+                        (SELECT close FROM DailyStockInfo WHERE symbol = lp.symbol AND timestamp = lp.max_time),
+                        (SELECT close FROM StocksHistory WHERE symbol = lp.symbol AND timestamp = lp.max_time)
+                    ) as close_price
                 FROM latest_prices lp
-                LEFT JOIN StocksHistory sh ON sh.symbol = lp.symbol AND sh.timestamp = lp.max_time
-                LEFT JOIN DailyStockInfo dsi ON dsi.symbol = lp.symbol AND dsi.timestamp = lp.max_time
             )
             SELECT COALESCE(SUM(ps.num_shares * cp.close_price), 0)
             FROM PortfolioStocks ps
             JOIN current_prices cp ON ps.symbol = cp.symbol
             WHERE ps.portfolio_id = %s;
         '''
-        # import time
-        # start_time = time.time()
         cursor.execute(value_query, (portfolio_id,))
         result = cursor.fetchone()
-        # end_time = time.time()
-        # print(f"Time taken to execute value_query: {end_time - start_time} seconds")
         if not result:
             cursor.close()
             return None

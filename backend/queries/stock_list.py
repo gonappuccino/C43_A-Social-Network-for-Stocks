@@ -77,29 +77,47 @@ class StockList:
     def add_stock_to_list(self, user_id, stocklist_id, symbol, num_shares):
         cursor = self.conn.cursor()
 
-        is_owner_query = '''
-            SELECT 1
-            FROM StockLists sl
-            WHERE sl.stocklist_id = %s AND sl.creator_id = %s
-        '''
-        cursor.execute(is_owner_query, (stocklist_id, user_id))
-        is_owner = cursor.fetchone()
-        if not is_owner:
-            cursor.close()
-            return None
+        try:
+            # First check if the stock exists
+            check_stock_query = '''
+                SELECT 1 FROM DailyStockInfo WHERE symbol = %s
+                UNION
+                SELECT 1 FROM StocksHistory WHERE symbol = %s
+                LIMIT 1;
+            '''
+            cursor.execute(check_stock_query, (symbol, symbol))
+            if not cursor.fetchone():
+                cursor.close()
+                return None  # Stock does not exist
 
-        query = '''
-            INSERT INTO StockListStocks (stocklist_id, symbol, num_shares)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (stocklist_id, symbol)
-            DO UPDATE SET num_shares = StockListStocks.num_shares + EXCLUDED.num_shares
-            RETURNING num_shares;
-        '''
-        cursor.execute(query, (stocklist_id, symbol, num_shares))
-        result = cursor.fetchone()
-        self.conn.commit()
-        cursor.close()
-        return result
+            is_owner_query = '''
+                SELECT 1
+                FROM StockLists sl
+                WHERE sl.stocklist_id = %s AND sl.creator_id = %s
+            '''
+            cursor.execute(is_owner_query, (stocklist_id, user_id))
+            is_owner = cursor.fetchone()
+            if not is_owner:
+                cursor.close()
+                return None
+
+            query = '''
+                INSERT INTO StockListStocks (stocklist_id, symbol, num_shares)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (stocklist_id, symbol)
+                DO UPDATE SET num_shares = StockListStocks.num_shares + EXCLUDED.num_shares
+                RETURNING num_shares;
+            '''
+            cursor.execute(query, (stocklist_id, symbol, num_shares))
+            result = cursor.fetchone()
+            self.conn.commit()
+            cursor.close()
+            return result
+        except Exception as e:
+            self.conn.rollback()
+            cursor.close()
+            print(f"Error in add_stock_to_list: {e}")
+            return None
 
     def remove_stock_from_list(self, user_id, stocklist_id, symbol, num_shares):
 
@@ -311,13 +329,14 @@ class StockList:
             ),
             current_prices AS (
                 SELECT 
-                    sh.symbol,
-                    COALESCE(sh.close, dsi.close) as close_price
+                    lp.symbol,
+                    COALESCE(
+                        (SELECT close FROM DailyStockInfo WHERE symbol = lp.symbol AND timestamp = lp.max_time),
+                        (SELECT close FROM StocksHistory WHERE symbol = lp.symbol AND timestamp = lp.max_time)
+                    ) as close_price
                 FROM latest_prices lp
-                LEFT JOIN StocksHistory sh ON sh.symbol = lp.symbol AND sh.timestamp = lp.max_time
-                LEFT JOIN DailyStockInfo dsi ON dsi.symbol = lp.symbol AND dsi.timestamp = lp.max_time
             )
-            SELECT COALESCE(SUM(sls.num_shares * cp.close_price), 0)
+            SELECT SUM(sls.num_shares * cp.close_price)
             FROM StockListStocks sls
             JOIN current_prices cp ON sls.symbol = cp.symbol
             WHERE sls.stocklist_id = %s;
