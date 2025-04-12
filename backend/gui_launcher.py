@@ -209,6 +209,7 @@ class MainAppFrame(ttk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        # self._stocklist_refresh_job = None # Removed periodic refresh job
 
         # Top frame for logout and user info (optional)
         top_frame = ttk.Frame(self)
@@ -245,6 +246,8 @@ class MainAppFrame(ttk.Frame):
 
         # Add delete account button
         ttk.Button(self, text="Delete Account", command=self.delete_account).pack(side="bottom", pady=10)
+
+        # Removed call to schedule_stocklist_refresh()
 
     def setup_portfolio_tab(self):
         # Portfolio Management Frame
@@ -351,7 +354,11 @@ class MainAppFrame(ttk.Frame):
         self.stocklist_var = tk.StringVar()
         self.stocklist_combo = ttk.Combobox(management_frame, textvariable=self.stocklist_var, state="readonly")
         self.stocklist_combo.pack(side="left", padx=5)
+        # Refresh list when an item is selected (optional, keeps previous behavior)
         self.stocklist_combo.bind('<<ComboboxSelected>>', lambda e: self.refresh_stocklist())
+        # --- Add this line: Refresh list on click before dropdown opens ---
+        self.stocklist_combo.bind('<Button-1>', lambda e: self.refresh_stocklist_list())
+        # --------------------------------------------------------------------
 
         # Stock List Details Frame
         self.stocklist_details_frame = ttk.LabelFrame(self.stocklist_tab, text="Stock List Details", padding="10")
