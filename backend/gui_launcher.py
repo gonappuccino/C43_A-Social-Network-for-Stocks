@@ -957,21 +957,10 @@ class MainAppFrame(ttk.Frame):
         transactions_window.title("Portfolio Transactions")
         transactions_window.geometry("800x600")
 
-        # Create a frame for the time period selector
-        period_frame = ttk.Frame(transactions_window)
-        period_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        ttk.Label(period_frame, text="Time Period:").pack(side=tk.LEFT, padx=5)
-        period_var = tk.StringVar(value="all")
-        period_combo = ttk.Combobox(period_frame, textvariable=period_var, 
-                                  values=["5d", "1mo", "6mo", "1y", "5y", "all"],
-                                  state="readonly", width=10)
-        period_combo.pack(side=tk.LEFT, padx=5)
-
         # Create treeview for transactions
         columns = ("ID", "Symbol", "Type", "Shares", "Price", "Cash Change", "Time")
         tree = ttk.Treeview(transactions_window, columns=columns, show="headings")
-        
+
         # Set column headings
         for col in columns:
             tree.heading(col, text=col)
@@ -987,29 +976,33 @@ class MainAppFrame(ttk.Frame):
             # Clear existing items
             for item in tree.get_children():
                 tree.delete(item)
-            
-            # Get transactions
-            transactions = self.portfolio.view_portfolio_transactions(self.current_user_id, portfolio_id)
-            if not transactions:
-                return
-            
-            # Add transactions to treeview
-            for t in transactions:
-                tree.insert("", tk.END, values=(
-                    t[0],  # ID
-                    t[2] if t[2] else "CASH",  # Symbol
-                    t[3],  # Type
-                    t[4],  # Shares
-                    f"${t[5]:.2f}" if t[5] else "",  # Price
-                    f"${t[6]:.2f}",  # Cash Change
-                    t[7].strftime("%Y-%m-%d %H:%M:%S")  # Time
-                ))
 
-        # Add refresh button
-        refresh_button = ttk.Button(period_frame, text="Refresh", command=refresh_transactions)
-        refresh_button.pack(side=tk.LEFT, padx=5)
+            # Get all transactions for the portfolio
+            try:
+                # Ensure we use the controller's portfolio instance and the current user ID
+                transactions = self.controller.portfolio.view_portfolio_transactions(self.controller.current_user_id, portfolio_id)
+                if not transactions:
+                    messagebox.showinfo("Info", "No transactions found for this portfolio.")
+                    return
 
-        # Initial load
+                # Add transactions to treeview
+                for t in transactions:
+                    tree.insert("", tk.END, values=(
+                        t[0],  # ID
+                        t[2] if t[2] else "CASH",  # Symbol (Handle CASH transactions)
+                        t[3],  # Type
+                        f"{t[4]:.2f}" if t[4] is not None else "", # Shares (formatted)
+                        f"${t[5]:.2f}" if t[5] is not None else "",  # Price (formatted)
+                        f"${t[6]:.2f}" if t[6] is not None else "",  # Cash Change (formatted)
+                        t[7].strftime("%Y-%m-%d %H:%M:%S") if t[7] else "" # Time (formatted)
+                    ))
+            except Exception as e:
+                 messagebox.showerror("Error", f"Failed to load transactions: {e}")
+                 print(f"Error fetching transactions: {e}") # Log error for debugging
+                 import traceback
+                 traceback.print_exc()
+
+        # Initial load of all transactions
         refresh_transactions()
 
     def view_analytics(self):
