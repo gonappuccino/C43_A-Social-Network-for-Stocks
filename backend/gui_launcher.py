@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
 import sys
+import datetime
 from queries.setup import setup_queries, load_stock_history_from_local, load_stock_history_from_local_fast, load_stock_history_from_csv, copy_symbols
 
 
@@ -25,7 +26,7 @@ def setup_db(load_stock_history = False):
     try:
         conn = psycopg2.connect(
             host='34.130.75.185',
-            database='postgres',
+            database='template1',
             user='postgres',
             password='2357'
         )
@@ -40,10 +41,10 @@ def setup_db(load_stock_history = False):
         if load_stock_history:
             try:
                 # Clear existing stock data
-                cursor.execute("DELETE FROM stockshistory")
-                cursor.execute("DELETE FROM stocks")
-                conn.commit()
-                print("✅ Cleared existing stock data")
+                # cursor.execute("DELETE FROM stockshistory")
+                # cursor.execute("DELETE FROM stocks")
+                # conn.commit()
+                # print("✅ Cleared existing stock data")
                 
                 success = load_stock_history_from_local_fast(conn)
                 if success:
@@ -302,7 +303,14 @@ class MainAppFrame(ttk.Frame):
         buttons_frame.pack(fill="x", padx=5, pady=5)
 
         ttk.Button(buttons_frame, text="Add Stock", command=self.add_stock).pack(side="left", padx=5)
-        ttk.Button(buttons_frame, text="Remove Stock", command=self.remove_stock).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="Sell Stock", command=self.sell_stock).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="Update Cash", command=self.update_cash).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="View Transactions", command=self.view_transactions).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="View Analytics", command=self.view_analytics).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="Predict Value", command=self.predict_value).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="Delete Portfolio", command=self.delete_portfolio_gui).pack(side="left", padx=5)
+
+        # Refresh 버튼은 오른쪽에 배치
         ttk.Button(buttons_frame, text="Refresh", command=self.refresh_portfolio).pack(side="right", padx=5)
 
         # Graph Frame
@@ -378,6 +386,9 @@ class MainAppFrame(ttk.Frame):
         ttk.Button(buttons_frame, text="Remove Stock", command=self.remove_stock_from_list).pack(side="left", padx=5)
         ttk.Button(buttons_frame, text="Share List", command=self.share_stocklist).pack(side="left", padx=5)
         ttk.Button(buttons_frame, text="Unshare List", command=self.unshare_stocklist).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="View History", command=self.view_stocklist_history).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="Predict Value", command=self.predict_stocklist_value).pack(side="left", padx=5)
+        ttk.Button(buttons_frame, text="View Analytics", command=self.view_stocklist_analytics).pack(side="left", padx=5)
         ttk.Button(buttons_frame, text="Delete List", command=self.delete_stocklist).pack(side="left", padx=5)
         ttk.Button(buttons_frame, text="Refresh", command=self.refresh_stocklist).pack(side="right", padx=5)
 
@@ -703,16 +714,50 @@ class MainAppFrame(ttk.Frame):
 
     def refresh_portfolio_list(self):
         try:
+            # Store current selection before fetching new data
+            original_selection_text = self.portfolio_var.get()
+            original_id = None
+            if original_selection_text: # 현재 선택된 텍스트에서 ID 추출 시도
+                import re
+                match = re.search(r'ID: (\d+)', original_selection_text)
+                if match:
+                    original_id = int(match.group(1))
+
             portfolios = self.controller.portfolio.view_user_portfolios(self.controller.current_user_id)
+            new_portfolio_list = []
+            new_selection_text = None
+
             if portfolios:
-                # Format: "Portfolio Name (ID: x) - $y"
-                portfolio_list = [f"{p[1]} (ID: {p[0]}) - ${float(p[2]):.2f}" for p in portfolios]
-                self.portfolio_combo['values'] = portfolio_list
-                if not self.portfolio_var.get() and portfolio_list:
-                    self.portfolio_combo.set(portfolio_list[0])
+                # Generate new list of strings for the Combobox
+                new_portfolio_list = [f"{p[1]} (ID: {p[0]}) - ${float(p[2]):.2f}" for p in portfolios]
+
+                # Try to find the text corresponding to the originally selected ID in the new list
+                if original_id is not None:
+                    for item_text in new_portfolio_list:
+                        # Extract ID from the new item text
+                        import re
+                        match = re.search(r'ID: (\d+)', item_text)
+                        if match and int(match.group(1)) == original_id:
+                            new_selection_text = item_text
+                            break
+
+            # Update Combobox values
+            self.portfolio_combo['values'] = new_portfolio_list
+
+            # Set the selection
+            if new_selection_text:
+                # If we found the matching item in the new list, set it
+                self.portfolio_var.set(new_selection_text)
+                self.portfolio_combo.set(new_selection_text) # Explicitly set combobox too
+            elif new_portfolio_list:
+                # Otherwise, if the list is not empty, select the first item
+                self.portfolio_var.set(new_portfolio_list[0])
+                self.portfolio_combo.set(new_portfolio_list[0])
             else:
-                self.portfolio_combo['values'] = []
+                # If the list is empty, clear the selection
                 self.portfolio_var.set('')
+                self.portfolio_combo.set('')
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to refresh portfolio list: {str(e)}")
 
@@ -764,18 +809,16 @@ class MainAppFrame(ttk.Frame):
             return
         symbol = symbol.upper()
         
+        shares = simpledialog.askfloat("Add Stock", "Enter number of shares:")
+        if shares is None or shares <= 0:
+             if shares is not None: # User entered 0 or negative
+                 messagebox.showerror("Error", "Please enter a positive number of shares.")
+             return # Cancelled or invalid input
+
         try:
-            # First fetch stock data
-            self.controller.stock_data.fetch_and_store_daily_info_yahoo(symbol, num_days=5)
-            
-            # Get number of shares
-            shares = simpledialog.askfloat("Add Stock", "Enter number of shares:")
-            if shares is None:  # User cancelled
-                return
-            if shares < 1 or shares > 10000:
-                messagebox.showerror("Error", "Please enter a number between 1 and 10000")
-                return
-                
+            # 먼저 주식 데이터가 존재하는지 확인 시도 (선택적이지만 권장)
+            # self.controller.stock_data.fetch_and_store_daily_info_yahoo(symbol, num_days=1)
+
             # Try to buy shares
             success = self.controller.portfolio.buy_stock_shares(
                 self.controller.current_user_id,
@@ -783,125 +826,496 @@ class MainAppFrame(ttk.Frame):
                 symbol,
                 shares
             )
-            
+
             if success:
                 messagebox.showinfo("Success", f"Successfully purchased {shares} shares of {symbol}!")
+                self.refresh_portfolio_list() # <--- 추가: 드롭다운 목록 새로고침
                 self.refresh_portfolio()
             else:
                 cash_balance = self.controller.portfolio.get_cash_balance(portfolio_id, self.controller.current_user_id)
-                messagebox.showerror("Error", f"Purchase failed. Current cash balance: ${cash_balance:.2f}")
-                
+                messagebox.showerror("Error", f"Purchase failed. Check symbol or ensure sufficient funds. Current cash balance: ${cash_balance:.2f}")
+
         except Exception as e:
             messagebox.showerror("Error", f"Error purchasing stock: {str(e)}")
 
-    def remove_stock(self):
+    def sell_stock(self):
         # Get selected item from treeview
         selected_item = self.holdings_tree.selection()
         if not selected_item:
-            messagebox.showwarning("Remove Stock", "Please select a stock to remove")
+            messagebox.showwarning("Sell Stock", "Please select a stock to sell")
+            return
+
+        portfolio_id = self.get_selected_portfolio_id()
+        if not portfolio_id:
+            messagebox.showerror("Error", "Please select a portfolio first")
             return
 
         symbol = self.holdings_tree.item(selected_item[0])['values'][0]
-        if messagebox.askyesno("Remove Stock", f"Are you sure you want to remove {symbol} from your portfolio?"):
+        # 현재 보유량 확인 (선택 사항이지만 사용자 경험 개선)
+        current_shares_str = self.holdings_tree.item(selected_item[0])['values'][1]
+        try:
+            current_shares = float(current_shares_str)
+        except ValueError:
+            current_shares = 0 # 혹시 모를 오류 대비
+
+        shares_to_sell = simpledialog.askfloat("Sell Stock", f"Enter number of shares of {symbol} to sell (you own {current_shares:.2f}):",
+                                               minvalue=0.01) # 최소 0.01주 매도 가능하도록 설정 (필요시 조정)
+
+        if shares_to_sell is None:  # User cancelled
+            return
+
+        if shares_to_sell <= 0:
+            messagebox.showerror("Error", "Please enter a positive number of shares to sell.")
+            return
+
+        # 보유량보다 많이 팔려고 하는지 확인 (백엔드에서도 확인하지만 UI에서 미리 방지)
+        if shares_to_sell > current_shares:
+             messagebox.showerror("Error", f"You cannot sell more shares than you own ({current_shares:.2f}).")
+             return
+
+        if messagebox.askyesno("Confirm Sell", f"Are you sure you want to sell {shares_to_sell:.2f} shares of {symbol}?"):
             try:
-                success = self.controller.portfolio.remove_stock(
+                success = self.controller.portfolio.sell_stock_shares(
                     self.controller.current_user_id,
-                    symbol
+                    portfolio_id,
+                    symbol,
+                    shares_to_sell
                 )
-                
+
                 if success:
-                    messagebox.showinfo("Success", f"Removed {symbol} from portfolio")
-                    self.refresh_portfolio()
+                    messagebox.showinfo("Success", f"Successfully sold {shares_to_sell:.2f} shares of {symbol}")
+                    self.refresh_portfolio_list() # <--- 추가: 드롭다운 목록 새로고침
+                    self.refresh_portfolio() # 포트폴리오 정보 새로고침
                 else:
-                    messagebox.showerror("Error", "Failed to remove stock from portfolio")
+                    # 백엔드에서 실패 이유를 더 자세히 반환하면 좋음
+                    messagebox.showerror("Error", "Failed to sell stock. Insufficient shares or other error.")
             except Exception as e:
-                messagebox.showerror("Error", f"An error occurred: {str(e)}")
+                messagebox.showerror("Error", f"An error occurred while selling stock: {str(e)}")
+
+    def update_cash(self):
+        portfolio_id = self.get_selected_portfolio_id()
+        if not portfolio_id:
+            messagebox.showerror("Error", "Please select a portfolio first")
+            return
+
+        amount = simpledialog.askfloat("Update Cash Balance", "Enter amount to deposit (+) or withdraw (-):")
+
+        if amount is None: # User cancelled
+            return
+
+        if amount == 0:
+            messagebox.showwarning("Update Cash", "Amount cannot be zero.")
+            return
+
+        try:
+            new_balance = self.controller.portfolio.update_cash_balance(
+                self.controller.current_user_id,
+                portfolio_id,
+                amount
+            )
+
+            if new_balance is not None:
+                action = "deposited" if amount > 0 else "withdrawn"
+                messagebox.showinfo("Success", f"${abs(amount):.2f} {action}. New balance: ${new_balance:.2f}")
+                # 포트폴리오 목록과 상세 정보 모두 새로고침
+                self.refresh_portfolio_list()
+                self.refresh_portfolio()
+            else:
+                # 백엔드에서 실패 이유(잔고 부족 등)를 더 명확히 하면 좋음
+                messagebox.showerror("Error", "Failed to update cash balance. Check portfolio ID or available funds.")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred while updating cash: {str(e)}")
+
+    def view_transactions(self):
+        portfolio_id = self.get_selected_portfolio_id()
+        if not portfolio_id:
+            messagebox.showerror("Error", "Please select a portfolio first.")
+            return
+
+        try:
+            transactions = self.controller.portfolio.view_portfolio_transactions(
+                self.controller.current_user_id,
+                portfolio_id
+            )
+
+            if not transactions:
+                messagebox.showinfo("Info", "No transactions found for this portfolio.")
+                return
+
+            # 새 창 생성
+            trans_window = tk.Toplevel(self)
+            trans_window.title(f"Transactions for Portfolio {portfolio_id}")
+            trans_window.geometry("800x400") # 창 크기 조절
+
+            # Treeview 생성
+            columns = ("ID", "Symbol", "Type", "Shares", "Price", "Cash Change", "Time")
+            tree = ttk.Treeview(trans_window, columns=columns, show='headings')
+            for col in columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=100, anchor='center') # 너비 및 정렬 조절
+
+            # 스크롤바 추가
+            scrollbar = ttk.Scrollbar(trans_window, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+
+            tree.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            # 데이터 삽입
+            for trans in transactions:
+                # 시간 포맷 변경 등 필요시 추가
+                formatted_trans = list(trans)
+                if formatted_trans[7]: # 시간 데이터가 있다면 포맷 변경
+                     formatted_trans[7] = formatted_trans[7].strftime('%Y-%m-%d %H:%M:%S')
+                if formatted_trans[2] is None: # symbol이 NULL인 경우 (현금 거래)
+                    formatted_trans[2] = 'CASH'
+                # 숫자 포맷 변경
+                formatted_trans[4] = f"{float(trans[4]):.2f}" if trans[4] is not None else 'N/A' # shares
+                formatted_trans[5] = f"${float(trans[5]):.2f}" if trans[5] is not None else 'N/A' # price
+                formatted_trans[6] = f"${float(trans[6]):.2f}" if trans[6] is not None else 'N/A' # cash_change
+
+                tree.insert('', 'end', values=formatted_trans)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load transactions: {str(e)}")
+
+    def view_analytics(self):
+        portfolio_id = self.get_selected_portfolio_id()
+        if not portfolio_id:
+            messagebox.showerror("Error", "Please select a portfolio first.")
+            return
+
+        # 날짜 범위 입력 받기 (선택 사항, 비워두면 전체 기간)
+        start_date_str = simpledialog.askstring("Analytics Date Range", "Enter start date (YYYY-MM-DD, leave blank for all):")
+        end_date_str = simpledialog.askstring("Analytics Date Range", "Enter end date (YYYY-MM-DD, leave blank for all):")
+
+        start_date = None
+        end_date = None
+        try:
+            if start_date_str:
+                start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            if end_date_str:
+                end_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            messagebox.showerror("Error", "Invalid date format. Please use YYYY-MM-DD.")
+            return
+
+        try:
+            analytics = self.controller.portfolio.compute_portfolio_analytics(
+                self.controller.current_user_id,
+                portfolio_id,
+                start_date,
+                end_date
+            )
+
+            if not analytics:
+                messagebox.showinfo("Info", "No analytics available for this portfolio or date range.")
+                return
+
+            # 새 창 생성
+            analytics_window = tk.Toplevel(self)
+            analytics_window.title(f"Analytics for Portfolio {portfolio_id}")
+            analytics_window.geometry("800x600")
+
+            # Notebook으로 섹션 나누기
+            notebook = ttk.Notebook(analytics_window)
+            notebook.pack(pady=10, padx=10, fill="both", expand=True)
+
+            # --- Stock Analytics Tab ---
+            stock_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(stock_frame, text='Stock Stats')
+
+            stock_cols = ("Symbol", "Shares", "Coefficient of Variation", "Beta")
+            stock_tree = ttk.Treeview(stock_frame, columns=stock_cols, show='headings')
+            for col in stock_cols:
+                stock_tree.heading(col, text=col)
+                stock_tree.column(col, width=150, anchor='center')
+
+            stock_scrollbar = ttk.Scrollbar(stock_frame, orient="vertical", command=stock_tree.yview)
+            stock_tree.configure(yscrollcommand=stock_scrollbar.set)
+            stock_tree.pack(side="left", fill="both", expand=True)
+            stock_scrollbar.pack(side="right", fill="y")
+
+            for stock in analytics['stock_analytics']:
+                 stock_tree.insert('', 'end', values=(
+                     stock['symbol'],
+                     f"{stock['shares']:.2f}",
+                     f"{stock['coefficient_of_variation']:.4f}",
+                     f"{stock['beta']:.4f}"
+                 ))
+
+            # --- Correlation Matrix Tab ---
+            corr_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(corr_frame, text='Correlation Matrix')
+
+            symbols = sorted(analytics['correlation_matrix'].keys())
+            corr_cols = ["Symbol"] + symbols
+            corr_tree = ttk.Treeview(corr_frame, columns=corr_cols, show='headings')
+            corr_tree.heading("Symbol", text="Symbol")
+            corr_tree.column("Symbol", width=80, anchor='w')
+            for symbol in symbols:
+                corr_tree.heading(symbol, text=symbol)
+                corr_tree.column(symbol, width=80, anchor='center')
+
+            corr_scrollbar = ttk.Scrollbar(corr_frame, orient="vertical", command=corr_tree.yview)
+            corr_tree.configure(yscrollcommand=corr_scrollbar.set)
+            corr_tree.pack(side="left", fill="both", expand=True)
+            corr_scrollbar.pack(side="right", fill="y")
+
+            for symbol1 in symbols:
+                row_values = [symbol1] + [f"{analytics['correlation_matrix'][symbol1].get(symbol2, 0):.4f}" for symbol2 in symbols]
+                corr_tree.insert('', 'end', values=row_values)
+
+            # --- Covariance Matrix Tab ---
+            cov_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(cov_frame, text='Covariance Matrix')
+
+            cov_cols = ["Symbol"] + symbols
+            cov_tree = ttk.Treeview(cov_frame, columns=cov_cols, show='headings')
+            cov_tree.heading("Symbol", text="Symbol")
+            cov_tree.column("Symbol", width=80, anchor='w')
+            for symbol in symbols:
+                cov_tree.heading(symbol, text=symbol)
+                cov_tree.column(symbol, width=80, anchor='center')
+
+            cov_scrollbar = ttk.Scrollbar(cov_frame, orient="vertical", command=cov_tree.yview)
+            cov_tree.configure(yscrollcommand=cov_scrollbar.set)
+            cov_tree.pack(side="left", fill="both", expand=True)
+            cov_scrollbar.pack(side="right", fill="y")
+
+            for symbol1 in symbols:
+                row_values = [symbol1] + [f"{analytics['covariance_matrix'][symbol1].get(symbol2, 0):.4f}" for symbol2 in symbols]
+                cov_tree.insert('', 'end', values=row_values)
+
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to compute or display analytics: {str(e)}")
+
+    def predict_value(self):
+        portfolio_id = self.get_selected_portfolio_id()
+        if not portfolio_id:
+            messagebox.showerror("Error", "Please select a portfolio first.")
+            return
+
+        days = simpledialog.askinteger("Predict Portfolio Value", "Enter number of days to predict:", initialvalue=30, minvalue=1)
+        if days is None:  # User cancelled
+            return
+
+        try:
+            predictions, confidence = self.controller.portfolio.predict_portfolio_value(
+                self.controller.current_user_id,
+                portfolio_id,
+                days
+            )
+
+            if not predictions:
+                messagebox.showinfo("Info", "No predictions available for this portfolio.")
+                return
+
+            # 새 창 생성
+            pred_window = tk.Toplevel(self)
+            pred_window.title(f"Value Predictions for Portfolio {portfolio_id}")
+            pred_window.geometry("800x600") # 창 크기 증가
+
+            # 예측 데이터 및 그래프 표시 프레임
+            main_frame = ttk.Frame(pred_window, padding="10")
+            main_frame.pack(fill="both", expand=True)
+
+            # 신뢰도 표시
+            ttk.Label(main_frame, text=f"Prediction Confidence: {confidence:.2%}").pack(pady=5)
+
+            # --- 예측 데이터 Treeview ---
+            data_frame = ttk.Frame(main_frame)
+            data_frame.pack(fill="both", expand=True, pady=5)
+
+            pred_cols = ("Date", "Predicted Value")
+            pred_tree = ttk.Treeview(data_frame, columns=pred_cols, show='headings', height=10) # 높이 조절
+            for col in pred_cols:
+                pred_tree.heading(col, text=col)
+                pred_tree.column(col, width=150, anchor='center')
+
+            pred_scrollbar = ttk.Scrollbar(data_frame, orient="vertical", command=pred_tree.yview)
+            pred_tree.configure(yscrollcommand=pred_scrollbar.set)
+            pred_tree.pack(side="left", fill="both", expand=True)
+            pred_scrollbar.pack(side="right", fill="y")
+
+            df = pd.DataFrame(predictions) # pandas DataFrame 사용
+            for _, row in df.iterrows():
+                 pred_tree.insert('', 'end', values=(row['date'], f"${row['value']:.2f}"))
+
+
+            # --- 예측 그래프 ---
+            graph_frame = ttk.Frame(main_frame)
+            graph_frame.pack(fill="both", expand=True, pady=5)
+
+            fig = plt.Figure(figsize=(8, 4)) # 그래프 크기 조절
+            ax = fig.add_subplot(111)
+            ax.plot(df['date'], df['value'], marker='o')
+            ax.set_title(f'Portfolio {portfolio_id} Value Predictions')
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Value ($)')
+            ax.grid(True)
+            fig.autofmt_xdate() # x축 레이블 자동 회전
+
+            canvas = FigureCanvasTkAgg(fig, graph_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc() # 상세 오류 출력
+            messagebox.showerror("Error", f"Failed to predict portfolio value: {str(e)}")
+
+    def delete_portfolio_gui(self):
+        portfolio_id = self.get_selected_portfolio_id()
+        if not portfolio_id:
+            messagebox.showerror("Error", "Please select a portfolio to delete.")
+            return
+
+        portfolio_name = self.portfolio_var.get().split(" (ID:")[0] # 확인 메시지에 이름 표시용
+
+        if messagebox.askyesno("Delete Portfolio", f"Are you sure you want to permanently delete the portfolio '{portfolio_name}' (ID: {portfolio_id})? This cannot be undone."):
+            try:
+                deleted_id = self.controller.portfolio.delete_portfolio(
+                    portfolio_id,
+                    self.controller.current_user_id
+                )
+                if deleted_id:
+                    messagebox.showinfo("Success", f"Portfolio '{portfolio_name}' deleted successfully.")
+                    # 포트폴리오 목록 새로고침하고, 선택 해제
+                    self.refresh_portfolio_list()
+                    self.portfolio_var.set('') # 콤보박스 선택 해제
+                    self.refresh_portfolio() # 빈 상태로 화면 갱신
+                else:
+                    messagebox.showerror("Error", "Failed to delete portfolio. You might not be the owner or the portfolio doesn't exist.")
+            except Exception as e:
+                messagebox.showerror("Error", f"An error occurred while deleting the portfolio: {str(e)}")
 
     def refresh_portfolio(self):
         try:
             portfolio_id = self.get_selected_portfolio_id()
-            if not portfolio_id:
-                print("No portfolio selected")
-                # Clear the treeview if no portfolio is selected
-                for item in self.holdings_tree.get_children():
-                    self.holdings_tree.delete(item)
-                self.portfolio_name_label.config(text="Portfolio Name: -")
-                self.cash_balance_label.config(text="Cash Balance: $0.00")
-                self.total_shares_label.config(text="Total Shares: 0")
-                self.total_value_label.config(text="Total Value: $0.00")
-                return
-
-            print(f"Fetching portfolio data for portfolio_id: {portfolio_id}")
-            # Get portfolio data
-            portfolio_data = self.controller.portfolio.view_portfolio(
-                self.controller.current_user_id, portfolio_id)
-            
-            print(f"Portfolio data received: {portfolio_data}")
-            
-            if not portfolio_data:
-                print("No portfolio data found")
-                messagebox.showinfo("Info", "No portfolio data found.")
-                return
-
-            # Clear existing items
+            # --- UI 초기화 ---
+            # Treeview 내용 지우기
             for item in self.holdings_tree.get_children():
                 self.holdings_tree.delete(item)
+            # 기본 정보 라벨 초기화
+            self.portfolio_name_label.config(text="Portfolio Name: -")
+            self.cash_balance_label.config(text="Cash Balance: $0.00")
+            self.total_shares_label.config(text="Total Shares: 0")
+            self.total_value_label.config(text="Total Value: $0.00")
+            # 그래프 초기화
+            self.ax.clear()
+            self.ax.set_title('Portfolio Value Over Time')
+            self.ax.set_xlabel('Date')
+            self.ax.set_ylabel('Value ($)')
+            self.ax.grid(True)
+            self.canvas.draw()
 
-            # Update holdings
-            total_value = 0
-            total_shares = 0
-            cash_balance = portfolio_data[0][1] if portfolio_data else 0
 
-            # Get portfolio name from the combo box
+            if not portfolio_id:
+                print("No portfolio selected, clearing view.")
+                return # 포트폴리오 선택 안됐으면 여기서 종료
+
+            print(f"Refreshing portfolio data for portfolio_id: {portfolio_id}")
+
+            # --- 데이터 가져오기 ---
+            # 포트폴리오 기본 정보 (이름은 콤보박스에서, 잔고는 view_portfolio에서)
             selected = self.portfolio_var.get()
             portfolio_name = selected.split(" (ID:")[0] if selected else "-"
+
+            # view_portfolio 호출은 한 번만
+            portfolio_data = self.controller.portfolio.view_portfolio(
+                self.controller.current_user_id, portfolio_id)
+
+            print(f"Portfolio data received: {portfolio_data}")
+
+            if not portfolio_data:
+                print("No portfolio data found for selected ID.")
+                messagebox.showinfo("Info", "No data found for this portfolio.")
+                return
+
+            # 현금 잔고 설정 및 변수 초기화
+            cash_balance = 0.0
+            if portfolio_data and portfolio_data[0][1] is not None: # 첫 행의 cash_balance 사용
+                 try:
+                     cash_balance = float(portfolio_data[0][1])
+                 except (ValueError, TypeError):
+                     print(f"Warning: Could not convert cash balance {portfolio_data[0][1]} to float.")
+                     cash_balance = 0.0
+
+            total_shares = 0.0
+            total_value = cash_balance # 총 가치 계산 시 현금 먼저 포함
+
+            # --- UI 업데이트 (기본 정보 라벨) ---
             self.portfolio_name_label.config(text=f"Portfolio Name: {portfolio_name}")
-
-            # Process portfolio data - only stocks (no cash)
-            for holding in portfolio_data:
-                try:
-                    symbol = holding[2]
-                    if not symbol:  # Skip if no symbol (cash balance row)
-                        continue
-
-                    shares = float(holding[3]) if holding[3] is not None else 0
-                    total_shares += shares
-                    
-                    # Get current price from stock data to calculate total value
-                    try:
-                        stock_info = self.controller.stock_data.view_stock_info(symbol, period='1d')
-                        if stock_info and len(stock_info) > 0:
-                            current_price = float(stock_info[0][4])  # close price
-                            value = shares * current_price
-                            total_value += value
-
-                            self.holdings_tree.insert('', 'end', values=(
-                                symbol,
-                                f"{shares:.2f}"
-                            ))
-                        else:
-                            print(f"No stock info available for {symbol}")
-                    except Exception as e:
-                        print(f"Error getting stock info for {symbol}: {str(e)}")
-                        continue
-                except Exception as e:
-                    print(f"Error processing holding {holding}: {str(e)}")
-                    continue
-
-            # Add cash to total value but don't show in holdings
-            total_value += cash_balance
-
-            # Update summary labels
             self.cash_balance_label.config(text=f"Cash Balance: ${cash_balance:.2f}")
+
+            # --- Holdings Treeview 채우기 및 총 가치 계산 ---
+            holdings_to_display = [] # Treeview에 표시할 데이터 임시 저장
+            symbols_in_portfolio = [] # 가격 조회를 위한 심볼 목록
+
+            # 1. 보유 주식 목록 구성 (테이블 데이터 기준)
+            for holding in portfolio_data:
+                symbol = holding[2]
+                if not symbol: continue # 현금 잔고 행 또는 symbol 없는 데이터 건너뛰기
+
+                try:
+                    shares = float(holding[3]) if holding[3] is not None else 0.0
+                    if shares > 0: # 보유량이 0보다 클 때만 처리
+                        holdings_to_display.append({'symbol': symbol, 'shares': shares})
+                        if symbol not in symbols_in_portfolio: # 중복 방지
+                             symbols_in_portfolio.append(symbol)
+                        total_shares += shares
+                except (ValueError, TypeError) as e:
+                    print(f"Error processing holding data {holding}: {e}")
+                    continue # 문제가 있는 데이터는 건너뛰기
+
+            # 2. 현재 가격 조회 (개별 조회, 오류 처리 강화)
+            current_prices = {} # 조회된 현재가 저장
+            print(f"Fetching prices for symbols: {symbols_in_portfolio}")
+            if symbols_in_portfolio:
+                for symbol in symbols_in_portfolio:
+                    try:
+                        # '1d' 또는 '5d' 등 짧은 기간 조회 시도
+                        stock_info = self.controller.stock_data.view_stock_info(symbol, period='5d')
+                        if stock_info and len(stock_info) > 0:
+                            # 가장 최근 데이터의 종가 사용
+                            current_prices[symbol] = float(stock_info[0][4])
+                            print(f"Price for {symbol}: {current_prices[symbol]}")
+                        else:
+                            print(f"Price data not found for {symbol} in the last 5 days.")
+                            current_prices[symbol] = None # 가격 조회 실패 시 None
+                    except Exception as e:
+                        print(f"Error fetching price for {symbol}: {e}")
+                        current_prices[symbol] = None # 오류 발생 시 None
+
+            # 3. Treeview 업데이트 및 총 가치 합산
+            print(f"Updating treeview with holdings: {holdings_to_display}")
+            print(f"Current prices obtained: {current_prices}")
+            for item in holdings_to_display:
+                symbol = item['symbol']
+                shares = item['shares']
+                current_price = current_prices.get(symbol) # get() 사용하여 키 없어도 오류 방지
+
+                # Treeview에는 항상 심볼과 수량 표시
+                self.holdings_tree.insert('', 'end', values=(symbol, f"{shares:.2f}"))
+
+                if current_price is not None:
+                    stock_value = shares * current_price
+                    total_value += stock_value
+                    print(f"Added value for {symbol}: {stock_value:.2f} (Shares: {shares}, Price: {current_price})")
+                else:
+                    print(f"Could not calculate value for {symbol} due to missing price.")
+                    # 가격 조회 실패 시 해당 주식 가치는 더하지 않음
+
+            # --- 최종 UI 업데이트 (요약 정보 및 그래프) ---
+            print(f"Final calculated values - Total Shares: {total_shares}, Total Value: {total_value}")
             self.total_shares_label.config(text=f"Total Shares: {total_shares:.2f}")
             self.total_value_label.config(text=f"Total Value: ${total_value:.2f}")
-
-            # Refresh the performance graph
-            self.update_performance_graph()
+            self.update_performance_graph() # 그래프 새로고침 (데이터 없으면 비워짐)
 
         except Exception as e:
-            print(f"Failed to refresh portfolio: {str(e)}")
-            print(f"Error type: {type(e)}")
+            print(f"Error in refresh_portfolio: {str(e)}")
             import traceback
             traceback.print_exc()
             messagebox.showerror("Error", f"Failed to refresh portfolio data: {str(e)}")
@@ -1352,6 +1766,253 @@ class MainAppFrame(ttk.Frame):
             print(f"Failed to refresh stock list: {str(e)}")
             messagebox.showerror("Error", f"Failed to refresh stock list data: {str(e)}")
 
+    def view_stocklist_history(self):
+        stocklist_id = self.get_selected_stocklist_id()
+        if not stocklist_id:
+            messagebox.showerror("Error", "Please select a stock list first.")
+            return
+
+        # 기간 선택 (CLI와 동일하게)
+        period = simpledialog.askstring("Stock List History", "Enter period (5d, 1mo, 6mo, 1y, 5y, all):",
+                                        initialvalue='1mo')
+        if not period or period.lower() not in ['5d', '1mo', '6mo', '1y', '5y', 'all']:
+            if period is not None: # 사용자가 취소하지 않았는데 잘못 입력한 경우
+                messagebox.showerror("Error", "Invalid period. Use '5d', '1mo', '6mo', '1y', '5y', or 'all'.")
+            return
+        period = period.lower()
+
+        try:
+            history_data = self.controller.stock_list.view_stock_list_history(
+                self.controller.current_user_id,
+                stocklist_id,
+                period
+            )
+
+            if not history_data:
+                messagebox.showinfo("Info", "No history data found for this stock list or period.")
+                return
+
+            # 새 창 생성
+            hist_window = tk.Toplevel(self)
+            hist_window.title(f"History for Stock List {stocklist_id} ({period})")
+            hist_window.geometry("800x600")
+
+            main_frame = ttk.Frame(hist_window, padding="10")
+            main_frame.pack(fill="both", expand=True)
+
+            # --- History Data Treeview ---
+            data_frame = ttk.Frame(main_frame)
+            data_frame.pack(fill="both", expand=True, pady=5)
+
+            hist_cols = ("Date", "Total Value")
+            hist_tree = ttk.Treeview(data_frame, columns=hist_cols, show='headings', height=10)
+            for col in hist_cols:
+                hist_tree.heading(col, text=col)
+                hist_tree.column(col, width=150, anchor='center')
+
+            hist_scrollbar = ttk.Scrollbar(data_frame, orient="vertical", command=hist_tree.yview)
+            hist_tree.configure(yscrollcommand=hist_scrollbar.set)
+            hist_tree.pack(side="left", fill="both", expand=True)
+            hist_scrollbar.pack(side="right", fill="y")
+
+            df = pd.DataFrame(history_data, columns=['Date', 'Value']) # DataFrame 사용
+            df['Date'] = pd.to_datetime(df['Date']) # 날짜 타입 변환
+            for _, row in df.iterrows():
+                 # 날짜 포맷 지정
+                 hist_tree.insert('', 'end', values=(row['Date'].strftime('%Y-%m-%d'), f"${row['Value']:.2f}"))
+
+            # --- History Graph ---
+            graph_frame = ttk.Frame(main_frame)
+            graph_frame.pack(fill="both", expand=True, pady=5)
+
+            fig = plt.Figure(figsize=(8, 4))
+            ax = fig.add_subplot(111)
+
+            period_names = {'5d': '5 Days', '1mo': '1 Month', '6mo': '6 Months', '1y': '1 Year', '5y': '5 Years', 'all': 'All Time'}
+            period_name = period_names.get(period, 'Custom Period')
+
+            ax.plot(df['Date'], df['Value'], marker='.') # 선 스타일 변경 가능
+            ax.set_title(f'Stock List {stocklist_id} Value - {period_name}')
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Value ($)')
+            ax.grid(True)
+            fig.autofmt_xdate() # x축 레이블 자동 회전
+
+            canvas = FigureCanvasTkAgg(fig, graph_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to display stock list history: {str(e)}")
+
+    def predict_stocklist_value(self):
+        stocklist_id = self.get_selected_stocklist_id()
+        if not stocklist_id:
+            messagebox.showerror("Error", "Please select a stock list first.")
+            return
+
+        days = simpledialog.askinteger("Predict Stock List Value", "Enter number of days to predict:", initialvalue=30, minvalue=1)
+        if days is None:  # User cancelled
+            return
+
+        try:
+            predictions, confidence = self.controller.stock_list.predict_stock_list_value(
+                self.controller.current_user_id,
+                stocklist_id,
+                days
+            )
+
+            if not predictions:
+                messagebox.showinfo("Info", "No predictions available for this stock list.")
+                return
+
+            # 새 창 생성 (포트폴리오 예측 창과 유사하게)
+            pred_window = tk.Toplevel(self)
+            pred_window.title(f"Value Predictions for Stock List {stocklist_id}")
+            pred_window.geometry("800x600")
+
+            main_frame = ttk.Frame(pred_window, padding="10")
+            main_frame.pack(fill="both", expand=True)
+
+            ttk.Label(main_frame, text=f"Prediction Confidence: {confidence:.2%}").pack(pady=5)
+
+            # --- Prediction Data Treeview ---
+            data_frame = ttk.Frame(main_frame)
+            data_frame.pack(fill="both", expand=True, pady=5)
+            pred_cols = ("Date", "Predicted Value")
+            pred_tree = ttk.Treeview(data_frame, columns=pred_cols, show='headings', height=10)
+            for col in pred_cols:
+                pred_tree.heading(col, text=col)
+                pred_tree.column(col, width=150, anchor='center')
+            pred_scrollbar = ttk.Scrollbar(data_frame, orient="vertical", command=pred_tree.yview)
+            pred_tree.configure(yscrollcommand=pred_scrollbar.set)
+            pred_tree.pack(side="left", fill="both", expand=True)
+            pred_scrollbar.pack(side="right", fill="y")
+
+            df = pd.DataFrame(predictions)
+            for _, row in df.iterrows():
+                 pred_tree.insert('', 'end', values=(row['date'], f"${row['value']:.2f}"))
+
+            # --- Prediction Graph ---
+            graph_frame = ttk.Frame(main_frame)
+            graph_frame.pack(fill="both", expand=True, pady=5)
+            fig = plt.Figure(figsize=(8, 4))
+            ax = fig.add_subplot(111)
+            ax.plot(df['date'], df['value'], marker='o')
+            ax.set_title(f'Stock List {stocklist_id} Value Predictions')
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Value ($)')
+            ax.grid(True)
+            fig.autofmt_xdate()
+            canvas = FigureCanvasTkAgg(fig, graph_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Error", f"Failed to predict stock list value: {str(e)}")
+
+    def view_stocklist_analytics(self):
+        stocklist_id = self.get_selected_stocklist_id()
+        if not stocklist_id:
+            messagebox.showerror("Error", "Please select a stock list first.")
+            return
+
+        start_date_str = simpledialog.askstring("Analytics Date Range", "Enter start date (YYYY-MM-DD, leave blank for all):")
+        end_date_str = simpledialog.askstring("Analytics Date Range", "Enter end date (YYYY-MM-DD, leave blank for all):")
+
+        start_date = None
+        end_date = None
+        try:
+            if start_date_str:
+                start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            if end_date_str:
+                end_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            messagebox.showerror("Error", "Invalid date format. Please use YYYY-MM-DD.")
+            return
+
+        try:
+            analytics = self.controller.stock_list.compute_stock_list_analytics(
+                self.controller.current_user_id,
+                stocklist_id,
+                start_date,
+                end_date
+            )
+
+            if not analytics:
+                messagebox.showinfo("Info", "No analytics available for this stock list or date range.")
+                return
+
+            # 새 창 생성 (포트폴리오 분석 창 재사용)
+            analytics_window = tk.Toplevel(self)
+            analytics_window.title(f"Analytics for Stock List {stocklist_id}")
+            analytics_window.geometry("800x600")
+
+            notebook = ttk.Notebook(analytics_window)
+            notebook.pack(pady=10, padx=10, fill="both", expand=True)
+
+            # --- Stock Analytics Tab ---
+            stock_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(stock_frame, text='Stock Stats')
+            stock_cols = ("Symbol", "Shares", "Coefficient of Variation", "Beta")
+            stock_tree = ttk.Treeview(stock_frame, columns=stock_cols, show='headings')
+            for col in stock_cols:
+                stock_tree.heading(col, text=col)
+                stock_tree.column(col, width=150, anchor='center')
+            stock_scrollbar = ttk.Scrollbar(stock_frame, orient="vertical", command=stock_tree.yview)
+            stock_tree.configure(yscrollcommand=stock_scrollbar.set)
+            stock_tree.pack(side="left", fill="both", expand=True)
+            stock_scrollbar.pack(side="right", fill="y")
+            for stock in analytics['stock_analytics']:
+                 stock_tree.insert('', 'end', values=(
+                     stock['symbol'], f"{stock['shares']:.2f}",
+                     f"{stock['coefficient_of_variation']:.4f}", f"{stock['beta']:.4f}"
+                 ))
+
+            # --- Correlation Matrix Tab ---
+            corr_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(corr_frame, text='Correlation Matrix')
+            symbols = sorted(analytics['correlation_matrix'].keys())
+            corr_cols = ["Symbol"] + symbols
+            corr_tree = ttk.Treeview(corr_frame, columns=corr_cols, show='headings')
+            corr_tree.heading("Symbol", text="Symbol")
+            corr_tree.column("Symbol", width=80, anchor='w')
+            for symbol in symbols:
+                corr_tree.heading(symbol, text=symbol)
+                corr_tree.column(symbol, width=80, anchor='center')
+            corr_scrollbar = ttk.Scrollbar(corr_frame, orient="vertical", command=corr_tree.yview)
+            corr_tree.configure(yscrollcommand=corr_scrollbar.set)
+            corr_tree.pack(side="left", fill="both", expand=True)
+            corr_scrollbar.pack(side="right", fill="y")
+            for symbol1 in symbols:
+                row_values = [symbol1] + [f"{analytics['correlation_matrix'][symbol1].get(symbol2, 0):.4f}" for symbol2 in symbols]
+                corr_tree.insert('', 'end', values=row_values)
+
+            # --- Covariance Matrix Tab ---
+            cov_frame = ttk.Frame(notebook, padding="10")
+            notebook.add(cov_frame, text='Covariance Matrix')
+            cov_cols = ["Symbol"] + symbols
+            cov_tree = ttk.Treeview(cov_frame, columns=cov_cols, show='headings')
+            cov_tree.heading("Symbol", text="Symbol")
+            cov_tree.column("Symbol", width=80, anchor='w')
+            for symbol in symbols:
+                cov_tree.heading(symbol, text=symbol)
+                cov_tree.column(symbol, width=80, anchor='center')
+            cov_scrollbar = ttk.Scrollbar(cov_frame, orient="vertical", command=cov_tree.yview)
+            cov_tree.configure(yscrollcommand=cov_scrollbar.set)
+            cov_tree.pack(side="left", fill="both", expand=True)
+            cov_scrollbar.pack(side="right", fill="y")
+            for symbol1 in symbols:
+                row_values = [symbol1] + [f"{analytics['covariance_matrix'][symbol1].get(symbol2, 0):.4f}" for symbol2 in symbols]
+                cov_tree.insert('', 'end', values=row_values)
+
+        except Exception as e:
+             import traceback
+             traceback.print_exc()
+             messagebox.showerror("Error", f"Failed to compute or display stock list analytics: {str(e)}")
+
 
 if __name__ == "__main__":
     # Setup database and load stock history
@@ -1361,7 +2022,7 @@ if __name__ == "__main__":
     try:
         conn = psycopg2.connect(
             host='34.130.75.185',
-            database='postgres',
+            database='template1',
             user='postgres',
             password='2357'
         )
