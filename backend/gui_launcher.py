@@ -1196,7 +1196,7 @@ class MainAppFrame(ttk.Frame):
 
         portfolio_name = self.portfolio_var.get().split(" (ID:")[0] # 확인 메시지에 이름 표시용
 
-        if messagebox.askyesno("Delete Portfolio", f"Are you sure you want to permanently delete the portfolio '{portfolio_name}' (ID: {portfolio_id})? This cannot be undone."):
+        if messagebox.askyesno("Delete Portfolio", f"Are you sure you want to delete the portfolio '{portfolio_name}' (ID: {portfolio_id})?"):
             try:
                 deleted_id = self.controller.portfolio.delete_portfolio(
                     portfolio_id,
@@ -1353,7 +1353,7 @@ class MainAppFrame(ttk.Frame):
             messagebox.showerror("Error", f"Failed to update performance graph: {str(e)}")
 
     def delete_account(self):
-        if messagebox.askyesno("Delete Account", "WARNING: This action is permanent and cannot be undone. Are you sure you want to delete your account?"):
+        if messagebox.askyesno("Delete Account", "Are you sure you want to delete your account?"):
             password = simpledialog.askstring("Password Confirmation", "Enter your password to confirm deletion:", show='*')
             if password:
                 try:
