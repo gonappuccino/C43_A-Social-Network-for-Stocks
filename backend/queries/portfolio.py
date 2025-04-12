@@ -133,7 +133,7 @@ class Portfolio:
             cursor.close()
             return None
 
-        # Get the latest price per share from StockHistory 
+        # Get the latest price per share from StockHistory and DailyStockInfo 
         price_query = '''
             (SELECT close, timestamp
               FROM DailyStockInfo

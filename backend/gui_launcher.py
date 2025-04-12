@@ -878,7 +878,7 @@ class MainAppFrame(ttk.Frame):
             current_shares = 0 # 혹시 모를 오류 대비
 
         shares_to_sell = simpledialog.askfloat("Sell Stock", f"Enter number of shares of {symbol} to sell (you own {current_shares:.2f}):",
-                                               minvalue=0.01) # 최소 0.01주 매도 가능하도록 설정 (필요시 조정)
+                                               minvalue=0.01) 
 
         if shares_to_sell is None:  # User cancelled
             return
@@ -887,7 +887,6 @@ class MainAppFrame(ttk.Frame):
             messagebox.showerror("Error", "Please enter a positive number of shares to sell.")
             return
 
-        # 보유량보다 많이 팔려고 하는지 확인 (백엔드에서도 확인하지만 UI에서 미리 방지)
         if shares_to_sell > current_shares:
              messagebox.showerror("Error", f"You cannot sell more shares than you own ({current_shares:.2f}).")
              return
@@ -903,10 +902,9 @@ class MainAppFrame(ttk.Frame):
 
                 if success:
                     messagebox.showinfo("Success", f"Successfully sold {shares_to_sell:.2f} shares of {symbol}")
-                    self.refresh_portfolio_list() # <--- 추가: 드롭다운 목록 새로고침
-                    self.refresh_portfolio() # 포트폴리오 정보 새로고침
+                    self.refresh_portfolio_list() 
+                    self.refresh_portfolio() 
                 else:
-                    # 백엔드에서 실패 이유를 더 자세히 반환하면 좋음
                     messagebox.showerror("Error", "Failed to sell stock. Insufficient shares or other error.")
             except Exception as e:
                 messagebox.showerror("Error", f"An error occurred while selling stock: {str(e)}")
@@ -936,11 +934,9 @@ class MainAppFrame(ttk.Frame):
             if new_balance is not None:
                 action = "deposited" if amount > 0 else "withdrawn"
                 messagebox.showinfo("Success", f"${abs(amount):.2f} {action}. New balance: ${new_balance:.2f}")
-                # 포트폴리오 목록과 상세 정보 모두 새로고침
                 self.refresh_portfolio_list()
                 self.refresh_portfolio()
             else:
-                # 백엔드에서 실패 이유(잔고 부족 등)를 더 명확히 하면 좋음
                 messagebox.showerror("Error", "Failed to update cash balance. Check portfolio ID or available funds.")
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred while updating cash: {str(e)}")
@@ -1220,16 +1216,17 @@ class MainAppFrame(ttk.Frame):
     def refresh_portfolio(self):
         try:
             portfolio_id = self.get_selected_portfolio_id()
-            # --- UI 초기화 ---
-            # Treeview 내용 지우기
+            
+            # --- UI Initialization --- 
+            # Clear Treeview
             for item in self.holdings_tree.get_children():
                 self.holdings_tree.delete(item)
-            # 기본 정보 라벨 초기화
+            # Reset labels
             self.portfolio_name_label.config(text="Portfolio Name: -")
             self.cash_balance_label.config(text="Cash Balance: $0.00")
             self.total_shares_label.config(text="Total Shares: 0")
             self.total_value_label.config(text="Total Value: $0.00")
-            # 그래프 초기화
+            # Clear graph
             self.ax.clear()
             self.ax.set_title('Portfolio Value Over Time')
             self.ax.set_xlabel('Date')
@@ -1237,108 +1234,75 @@ class MainAppFrame(ttk.Frame):
             self.ax.grid(True)
             self.canvas.draw()
 
-
             if not portfolio_id:
                 print("No portfolio selected, clearing view.")
-                return # 포트폴리오 선택 안됐으면 여기서 종료
+                return # Exit if no portfolio is selected
 
             print(f"Refreshing portfolio data for portfolio_id: {portfolio_id}")
 
-            # --- 데이터 가져오기 ---
-            # 포트폴리오 기본 정보 (이름은 콤보박스에서, 잔고는 view_portfolio에서)
+            # --- Fetch Basic Data and Populate Holdings --- 
             selected = self.portfolio_var.get()
             portfolio_name = selected.split(" (ID:")[0] if selected else "-"
 
-            # view_portfolio 호출은 한 번만
             portfolio_data = self.controller.portfolio.view_portfolio(
                 self.controller.current_user_id, portfolio_id)
-
+            
             print(f"Portfolio data received: {portfolio_data}")
-
+            
             if not portfolio_data:
                 print("No portfolio data found for selected ID.")
                 messagebox.showinfo("Info", "No data found for this portfolio.")
                 return
 
-            # 현금 잔고 설정 및 변수 초기화
+            # Get cash balance from the fetched data
             cash_balance = 0.0
-            if portfolio_data and portfolio_data[0][1] is not None: # 첫 행의 cash_balance 사용
+            if portfolio_data and portfolio_data[0][1] is not None:
                  try:
                      cash_balance = float(portfolio_data[0][1])
                  except (ValueError, TypeError):
                      print(f"Warning: Could not convert cash balance {portfolio_data[0][1]} to float.")
                      cash_balance = 0.0
 
+            # Populate holdings tree and calculate total shares
             total_shares = 0.0
-            total_value = cash_balance # 총 가치 계산 시 현금 먼저 포함
-
-            # --- UI 업데이트 (기본 정보 라벨) ---
-            self.portfolio_name_label.config(text=f"Portfolio Name: {portfolio_name}")
-            self.cash_balance_label.config(text=f"Cash Balance: ${cash_balance:.2f}")
-
-            # --- Holdings Treeview 채우기 및 총 가치 계산 ---
-            holdings_to_display = [] # Treeview에 표시할 데이터 임시 저장
-            symbols_in_portfolio = [] # 가격 조회를 위한 심볼 목록
-
-            # 1. 보유 주식 목록 구성 (테이블 데이터 기준)
             for holding in portfolio_data:
                 symbol = holding[2]
-                if not symbol: continue # 현금 잔고 행 또는 symbol 없는 데이터 건너뛰기
+                if not symbol: continue # Skip cash row
 
                 try:
                     shares = float(holding[3]) if holding[3] is not None else 0.0
-                    if shares > 0: # 보유량이 0보다 클 때만 처리
-                        holdings_to_display.append({'symbol': symbol, 'shares': shares})
-                        if symbol not in symbols_in_portfolio: # 중복 방지
-                             symbols_in_portfolio.append(symbol)
+                    if shares > 0:
+                        self.holdings_tree.insert('', 'end', values=(symbol, f"{shares:.2f}"))
                         total_shares += shares
                 except (ValueError, TypeError) as e:
                     print(f"Error processing holding data {holding}: {e}")
-                    continue # 문제가 있는 데이터는 건너뛰기
+                    continue 
 
-            # 2. 현재 가격 조회 (개별 조회, 오류 처리 강화)
-            current_prices = {} # 조회된 현재가 저장
-            print(f"Fetching prices for symbols: {symbols_in_portfolio}")
-            if symbols_in_portfolio:
-                for symbol in symbols_in_portfolio:
-                    try:
-                        # '1d' 또는 '5d' 등 짧은 기간 조회 시도
-                        stock_info = self.controller.stock_data.view_stock_info(symbol, period='5d')
-                        if stock_info and len(stock_info) > 0:
-                            # 가장 최근 데이터의 종가 사용
-                            current_prices[symbol] = float(stock_info[0][4])
-                            print(f"Price for {symbol}: {current_prices[symbol]}")
-                        else:
-                            print(f"Price data not found for {symbol} in the last 5 days.")
-                            current_prices[symbol] = None # 가격 조회 실패 시 None
-                    except Exception as e:
-                        print(f"Error fetching price for {symbol}: {e}")
-                        current_prices[symbol] = None # 오류 발생 시 None
-
-            # 3. Treeview 업데이트 및 총 가치 합산
-            print(f"Updating treeview with holdings: {holdings_to_display}")
-            print(f"Current prices obtained: {current_prices}")
-            for item in holdings_to_display:
-                symbol = item['symbol']
-                shares = item['shares']
-                current_price = current_prices.get(symbol) # get() 사용하여 키 없어도 오류 방지
-
-                # Treeview에는 항상 심볼과 수량 표시
-                self.holdings_tree.insert('', 'end', values=(symbol, f"{shares:.2f}"))
-
-                if current_price is not None:
-                    stock_value = shares * current_price
-                    total_value += stock_value
-                    print(f"Added value for {symbol}: {stock_value:.2f} (Shares: {shares}, Price: {current_price})")
-                else:
-                    print(f"Could not calculate value for {symbol} due to missing price.")
-                    # 가격 조회 실패 시 해당 주식 가치는 더하지 않음
-
-            # --- 최종 UI 업데이트 (요약 정보 및 그래프) ---
-            print(f"Final calculated values - Total Shares: {total_shares}, Total Value: {total_value}")
+            # --- Update UI Labels (Basic Info) ---
+            self.portfolio_name_label.config(text=f"Portfolio Name: {portfolio_name}")
+            self.cash_balance_label.config(text=f"Cash Balance: ${cash_balance:.2f}")
             self.total_shares_label.config(text=f"Total Shares: {total_shares:.2f}")
-            self.total_value_label.config(text=f"Total Value: ${total_value:.2f}")
-            self.update_performance_graph() # 그래프 새로고침 (데이터 없으면 비워짐)
+
+            # --- Get Total Value from Backend --- 
+            computed_total_value = None
+            try:
+                computed_total_value = self.controller.portfolio.compute_portfolio_value(
+                    self.controller.current_user_id, 
+                    portfolio_id
+                )
+                print(f"Backend computed total value: {computed_total_value}")
+            except Exception as e:
+                print(f"Error calling compute_portfolio_value: {e}")
+                messagebox.showerror("Error", "Failed to compute portfolio value.")
+
+            # Update total value label
+            if computed_total_value is not None:
+                self.total_value_label.config(text=f"Total Value: ${computed_total_value:.2f}")
+            else:
+                self.total_value_label.config(text="Total Value: Error")
+
+            # --- Update Graph --- 
+            self.update_performance_graph() 
 
         except Exception as e:
             print(f"Error in refresh_portfolio: {str(e)}")
@@ -2118,7 +2082,6 @@ if __name__ == "__main__":
     # Setup database and load stock history
     setup_db(True)
     
-    # Basic DB Connection Check (Optional but recommended)
     try:
         conn = psycopg2.connect(
             host='34.130.75.185',
