@@ -744,14 +744,10 @@ class Portfolio:
             ORDER BY timestamp ASC;
         '''
         
-        # import time
-        # start_time = time.time()
         cursor.execute(history_query, (start_date, latest_date, portfolio_id, cash_balance))
         history = cursor.fetchall()
-        # end_time = time.time()
-        # print(f"Time taken to execute history_query: {end_time - start_time} seconds")
         cursor.close()
-        return history 
+        return history
 
     def predict_portfolio_value(self, user_id: int, portfolio_id: int, days_to_predict: int = 30) -> Tuple[List[Dict], float]:
 

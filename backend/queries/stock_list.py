@@ -175,7 +175,6 @@ class StockList:
             return result
 
     def view_stock_list(self, user_id, stocklist_id):
-
         accessible_stock_lists = self.view_accessible_stock_lists(user_id)
         if not any([lst[0] == stocklist_id for lst in accessible_stock_lists]):
             return None

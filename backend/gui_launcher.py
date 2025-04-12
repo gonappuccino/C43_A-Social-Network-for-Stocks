@@ -927,57 +927,71 @@ class MainAppFrame(ttk.Frame):
             messagebox.showerror("Error", f"An error occurred while updating cash: {str(e)}")
 
     def view_transactions(self):
+        """View portfolio transactions"""
         portfolio_id = self.get_selected_portfolio_id()
         if not portfolio_id:
-            messagebox.showerror("Error", "Please select a portfolio first.")
+            messagebox.showerror("Error", "Please select a portfolio first")
             return
 
-        try:
-            transactions = self.controller.portfolio.view_portfolio_transactions(
-                self.controller.current_user_id,
-                portfolio_id
-            )
+        # Create a new window for transactions
+        transactions_window = tk.Toplevel(self)
+        transactions_window.title("Portfolio Transactions")
+        transactions_window.geometry("800x600")
 
+        # Create a frame for the time period selector
+        period_frame = ttk.Frame(transactions_window)
+        period_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Label(period_frame, text="Time Period:").pack(side=tk.LEFT, padx=5)
+        period_var = tk.StringVar(value="all")
+        period_combo = ttk.Combobox(period_frame, textvariable=period_var, 
+                                  values=["5d", "1mo", "6mo", "1y", "5y", "all"],
+                                  state="readonly", width=10)
+        period_combo.pack(side=tk.LEFT, padx=5)
+
+        # Create treeview for transactions
+        columns = ("ID", "Symbol", "Type", "Shares", "Price", "Cash Change", "Time")
+        tree = ttk.Treeview(transactions_window, columns=columns, show="headings")
+        
+        # Set column headings
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100)
+
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(transactions_window, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        def refresh_transactions():
+            # Clear existing items
+            for item in tree.get_children():
+                tree.delete(item)
+            
+            # Get transactions
+            transactions = self.portfolio.view_portfolio_transactions(self.current_user_id, portfolio_id)
             if not transactions:
-                messagebox.showinfo("Info", "No transactions found for this portfolio.")
                 return
+            
+            # Add transactions to treeview
+            for t in transactions:
+                tree.insert("", tk.END, values=(
+                    t[0],  # ID
+                    t[2] if t[2] else "CASH",  # Symbol
+                    t[3],  # Type
+                    t[4],  # Shares
+                    f"${t[5]:.2f}" if t[5] else "",  # Price
+                    f"${t[6]:.2f}",  # Cash Change
+                    t[7].strftime("%Y-%m-%d %H:%M:%S")  # Time
+                ))
 
-            # 새 창 생성
-            trans_window = tk.Toplevel(self)
-            trans_window.title(f"Transactions for Portfolio {portfolio_id}")
-            trans_window.geometry("800x400") # 창 크기 조절
+        # Add refresh button
+        refresh_button = ttk.Button(period_frame, text="Refresh", command=refresh_transactions)
+        refresh_button.pack(side=tk.LEFT, padx=5)
 
-            # Treeview 생성
-            columns = ("ID", "Symbol", "Type", "Shares", "Price", "Cash Change", "Time")
-            tree = ttk.Treeview(trans_window, columns=columns, show='headings')
-            for col in columns:
-                tree.heading(col, text=col)
-                tree.column(col, width=100, anchor='center') # 너비 및 정렬 조절
-
-            # 스크롤바 추가
-            scrollbar = ttk.Scrollbar(trans_window, orient="vertical", command=tree.yview)
-            tree.configure(yscrollcommand=scrollbar.set)
-
-            tree.pack(side="left", fill="both", expand=True)
-            scrollbar.pack(side="right", fill="y")
-
-            # 데이터 삽입
-            for trans in transactions:
-                # 시간 포맷 변경 등 필요시 추가
-                formatted_trans = list(trans)
-                if formatted_trans[7]: # 시간 데이터가 있다면 포맷 변경
-                     formatted_trans[7] = formatted_trans[7].strftime('%Y-%m-%d %H:%M:%S')
-                if formatted_trans[2] is None: # symbol이 NULL인 경우 (현금 거래)
-                    formatted_trans[2] = 'CASH'
-                # 숫자 포맷 변경
-                formatted_trans[4] = f"{float(trans[4]):.2f}" if trans[4] is not None else 'N/A' # shares
-                formatted_trans[5] = f"${float(trans[5]):.2f}" if trans[5] is not None else 'N/A' # price
-                formatted_trans[6] = f"${float(trans[6]):.2f}" if trans[6] is not None else 'N/A' # cash_change
-
-                tree.insert('', 'end', values=formatted_trans)
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load transactions: {str(e)}")
+        # Initial load
+        refresh_transactions()
 
     def view_analytics(self):
         portfolio_id = self.get_selected_portfolio_id()
@@ -1747,8 +1761,11 @@ class MainAppFrame(ttk.Frame):
                 self.controller.current_user_id,
                 stocklist_id
             )
-            self.stocklist_value_label.config(text=f"Total Value: ${total_value:.2f}")
 
+            if total_value is not None:
+                self.stocklist_value_label.config(text=f"Total Value: ${total_value:.2f}")
+            else:
+                self.stocklist_value_label.config(text="Total Value: $0.00")
             # Get public status
             stocklists = self.controller.stock_list.view_accessible_stock_lists(self.controller.current_user_id)
             for sl in stocklists:
@@ -2012,6 +2029,76 @@ class MainAppFrame(ttk.Frame):
              import traceback
              traceback.print_exc()
              messagebox.showerror("Error", f"Failed to compute or display stock list analytics: {str(e)}")
+
+    def view_portfolio_history(self):
+        """View portfolio history with time period selection"""
+        portfolio_id = self.get_selected_portfolio_id()
+        if not portfolio_id:
+            messagebox.showerror("Error", "Please select a portfolio first")
+            return
+
+        # Create a new window for history
+        history_window = tk.Toplevel(self)
+        history_window.title("Portfolio History")
+        history_window.geometry("800x600")
+
+        # Create a frame for the time period selector
+        period_frame = ttk.Frame(history_window)
+        period_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Label(period_frame, text="Time Period:").pack(side=tk.LEFT, padx=5)
+        period_var = tk.StringVar(value="1mo")
+        period_combo = ttk.Combobox(period_frame, textvariable=period_var, 
+                                  values=["5d", "1mo", "6mo", "1y", "5y", "all"],
+                                  state="readonly", width=10)
+        period_combo.pack(side=tk.LEFT, padx=5)
+
+        # Create a frame for the graph
+        graph_frame = ttk.Frame(history_window)
+        graph_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Create a figure and axis for the graph
+        fig = Figure(figsize=(8, 6))
+        ax = fig.add_subplot(111)
+        canvas = FigureCanvasTkAgg(fig, master=graph_frame)
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        def update_graph():
+            # Clear the existing graph
+            ax.clear()
+            
+            # Get history data for the selected period
+            history = self.portfolio.view_portfolio_history(self.current_user_id, portfolio_id, period_var.get())
+            if not history:
+                messagebox.showerror("Error", "No history data available")
+                return
+
+            # Extract dates and values
+            dates = [row[0] for row in history]
+            values = [float(row[1]) for row in history]
+
+            # Plot the data
+            ax.plot(dates, values)
+            ax.set_title(f"Portfolio History - {period_var.get()}")
+            ax.set_xlabel("Date")
+            ax.set_ylabel("Value ($)")
+            ax.grid(True)
+            
+            # Rotate x-axis labels for better readability
+            plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+            
+            # Adjust layout to prevent label cutoff
+            fig.tight_layout()
+            
+            # Update the canvas
+            canvas.draw()
+
+        # Add refresh button
+        refresh_button = ttk.Button(period_frame, text="Refresh", command=update_graph)
+        refresh_button.pack(side=tk.LEFT, padx=5)
+
+        # Initial load
+        update_graph()
 
 
 if __name__ == "__main__":
