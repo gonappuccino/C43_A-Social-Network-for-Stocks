@@ -669,7 +669,7 @@ class MainAppFrame(ttk.Frame):
                 # Insert prediction data
                 df = pd.DataFrame(predictions)
                 for _, row in df.iterrows():
-                    pred_tree.insert('', 'end', values=(row['date'], f"${row['value']:.2f}"))
+                    pred_tree.insert('', 'end', values=(row['date'], f"${row['price']:.2f}"))
 
                 # Add a graph
                 graph_frame = ttk.Frame(pred_window, padding="10")
@@ -677,7 +677,7 @@ class MainAppFrame(ttk.Frame):
 
                 fig = plt.Figure(figsize=(8, 4))
                 ax = fig.add_subplot(111)
-                ax.plot(df['date'], df['value'], marker='o')
+                ax.plot(df['date'], df['price'], marker='o')
                 ax.set_title(f'Stock Price Predictions for {symbol}')
                 ax.set_xlabel('Date')
                 ax.set_ylabel('Price ($)')
