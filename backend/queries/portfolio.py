@@ -348,24 +348,36 @@ class Portfolio:
         # latest close stock price for each stock in the portfolio multiplied by num shares
         # coalesce to 0 if no shares
         value_query = '''
-            SELECT COALESCE(SUM(ps.num_shares * sh.close), 0)
-              FROM PortfolioStocks ps
-              JOIN (
-                SELECT symbol, MAX(timestamp) AS max_time
-                  FROM (SELECT symbol, timestamp FROM StocksHistory 
-                          UNION 
-                        SELECT symbol, timestamp FROM DailyStockInfo) combined
-                 GROUP BY symbol
-              ) AS latest ON ps.symbol = latest.symbol
-              JOIN (SELECT symbol, timestamp, close FROM StocksHistory 
-                      UNION 
-                    SELECT symbol, timestamp, close FROM DailyStockInfo) sh 
-                ON sh.symbol = ps.symbol
-               AND sh.timestamp = latest.max_time
-             WHERE ps.portfolio_id = %s
+            WITH latest_prices AS (
+                SELECT 
+                    symbol,
+                    MAX(timestamp) as max_time
+                FROM (
+                    SELECT symbol, timestamp FROM StocksHistory
+                    UNION ALL
+                    SELECT symbol, timestamp FROM DailyStockInfo
+                ) combined
+                GROUP BY symbol
+            ),
+            current_prices AS (
+                SELECT 
+                    sh.symbol,
+                    COALESCE(sh.close, dsi.close) as close_price
+                FROM latest_prices lp
+                LEFT JOIN StocksHistory sh ON sh.symbol = lp.symbol AND sh.timestamp = lp.max_time
+                LEFT JOIN DailyStockInfo dsi ON dsi.symbol = lp.symbol AND dsi.timestamp = lp.max_time
+            )
+            SELECT COALESCE(SUM(ps.num_shares * cp.close_price), 0)
+            FROM PortfolioStocks ps
+            JOIN current_prices cp ON ps.symbol = cp.symbol
+            WHERE ps.portfolio_id = %s;
         '''
+        # import time
+        # start_time = time.time()
         cursor.execute(value_query, (portfolio_id,))
         result = cursor.fetchone()
+        # end_time = time.time()
+        # print(f"Time taken to execute value_query: {end_time - start_time} seconds")
         if not result:
             cursor.close()
             return None
@@ -532,7 +544,6 @@ class Portfolio:
                     (STDDEV(a.daily_return) * STDDEV(b.daily_return)) as correlation
                 FROM daily_returns a
                 JOIN daily_returns b ON a.timestamp = b.timestamp
-                WHERE a.symbol < b.symbol
                 GROUP BY a.symbol, b.symbol
             ),
             covariance_matrix AS (
@@ -542,7 +553,6 @@ class Portfolio:
                     (AVG(a.daily_return * b.daily_return) - AVG(a.daily_return) * AVG(b.daily_return)) as covariance
                 FROM daily_returns a
                 JOIN daily_returns b ON a.timestamp = b.timestamp
-                WHERE a.symbol <= b.symbol
                 GROUP BY a.symbol, b.symbol
             )
             SELECT 
@@ -572,15 +582,18 @@ class Portfolio:
         params = (symbols, start_date, end_date, symbols, start_date, end_date,
                  start_date, end_date)
         
+        # import time
+        # start_time = time.time()    
         cursor.execute(analytics_query, params)
         analytics_data = cursor.fetchall()
+        # end_time = time.time()  
+        # print(f"Time taken to execute analytics_query: {end_time - start_time} seconds")
         
         if not analytics_data:
             cursor.close()
             print("No analytics data")
             return None
             
-        # Process the results
         stock_analytics = []
         correlation_matrix = {}
         covariance_matrix = {}
@@ -620,7 +633,7 @@ class Portfolio:
                 if cov_symbol2 not in covariance_matrix:
                     covariance_matrix[cov_symbol2] = {}
                 covariance_matrix[cov_symbol2][symbol] = covariance
-                covariance_matrix[cov_symbol2][cov_symbol2] = covariance
+                #covariance_matrix[cov_symbol2][cov_symbol2] = covariance
         
         cursor.close()
         return {
@@ -630,7 +643,6 @@ class Portfolio:
         } 
 
     def view_portfolio_history(self, user_id, portfolio_id, period='all'):
-
         cursor = self.conn.cursor()
         
         # Check if user has access to portfolio
@@ -664,7 +676,6 @@ class Portfolio:
             return None
             
         # Get the most recent date from DailyStockInfo or StocksHistory
-        # for the stocks *in the portfolio*, take the minimum of the max dates
         recent_date_query = '''
             SELECT MIN(max_ts)
             FROM (
@@ -737,8 +748,12 @@ class Portfolio:
             ORDER BY timestamp ASC;
         '''
         
+        # import time
+        # start_time = time.time()
         cursor.execute(history_query, (start_date, latest_date, portfolio_id, cash_balance))
         history = cursor.fetchall()
+        # end_time = time.time()
+        # print(f"Time taken to execute history_query: {end_time - start_time} seconds")
         cursor.close()
         return history 
 

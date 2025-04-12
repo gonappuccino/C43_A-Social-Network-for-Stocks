@@ -264,6 +264,22 @@ copy_symbols = '''
     ON CONFLICT (symbol) DO NOTHING;
 '''
 
+# Create indexes for portfolio value optimization
+create_indexes = [
+    '''
+    CREATE INDEX IF NOT EXISTS idx_stocks_history_symbol_timestamp 
+    ON StocksHistory(symbol, timestamp);
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS idx_daily_stock_info_symbol_timestamp 
+    ON DailyStockInfo(symbol, timestamp);
+    ''',
+    '''
+    CREATE INDEX IF NOT EXISTS idx_portfolio_stocks_portfolio_symbol 
+    ON PortfolioStocks(portfolio_id, symbol);
+    '''
+]
+
 
 
 setup_queries = [
@@ -281,3 +297,5 @@ setup_queries = [
     create_daily_stock_info,
     create_portfolio_analytics_cache,
 ]
+
+setup_queries.extend(create_indexes)

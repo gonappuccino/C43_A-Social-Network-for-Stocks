@@ -468,9 +468,10 @@ def stocklist_menu():
         print("11. Delete Review")
         print("12. View Stock List History")
         print("13. Predict Stock List Value")
-        print("14. Return to Main Menu")
+        print("14. View Stock List Analytics")
+        print("15. Return to Main Menu")
         
-        choice = input("\nEnter your choice (1-14): ")
+        choice = input("\nEnter your choice (1-15): ")
         
         if choice == '1':
             # View accessible stock lists
@@ -699,11 +700,80 @@ def stocklist_menu():
             predict_stock_list_value()
             pause()
         elif choice == '14':
+            view_stock_list_analytics()
+            pause()
+            
+        elif choice == '15':
             return
             
         else:
-            print("\nInvalid choice. Please enter a number between 1 and 14.")
+            print("\nInvalid choice. Please enter a number between 1 and 15.")
             pause()
+
+def view_stock_list_analytics():
+    """Display stock list analytics including CV, Beta, and correlation/covariance matrices"""
+    try:
+        stocklist_id = int(input("Enter stock list ID: "))
+        
+        # Get date range
+        print("\nEnter date range for analysis (YYYY-MM-DD format)")
+        print("Leave blank for maximum possible range based on available stock data")
+        start_date_str = input("Start date: ").strip()
+        end_date_str = input("End date: ").strip()
+        
+        # Parse dates if provided
+        start_date = None
+        end_date = None
+        if start_date_str:
+            start_date = datetime.datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        if end_date_str:
+            end_date = datetime.datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        
+        # Get analytics
+        analytics = stock_list.compute_stock_list_analytics(current_user_id, stocklist_id, start_date, end_date)
+        
+        if not analytics:
+            print("\nNo analytics available. Make sure the stock list exists and contains stocks.")
+            return
+            
+        # Display stock analytics
+        print_header("Stock List Analytics")
+        print("\nStock Analytics:")
+        headers = ["Symbol", "Shares", "Coefficient of Variation", "Beta"]
+        data = [[
+            stock['symbol'],
+            stock['shares'],
+            f"{stock['coefficient_of_variation']:.4f}",
+            f"{stock['beta']:.4f}"
+        ] for stock in analytics['stock_analytics']]
+        print(tabulate(data, headers=headers, tablefmt="grid"))
+        
+        # Display correlation matrix
+        print("\nCorrelation Matrix:")
+        symbols = sorted(analytics['correlation_matrix'].keys())
+        headers = ["Symbol"] + symbols
+        data = []
+        for symbol in symbols:
+            row = [symbol]
+            for other_symbol in symbols:
+                row.append(f"{analytics['correlation_matrix'][symbol].get(other_symbol, 0):.4f}")
+            data.append(row)
+        print(tabulate(data, headers=headers, tablefmt="grid"))
+        
+        # Display covariance matrix
+        print("\nCovariance Matrix:")
+        data = []
+        for symbol in symbols:
+            row = [symbol]
+            for other_symbol in symbols:
+                row.append(f"{analytics['covariance_matrix'][symbol].get(other_symbol, 0):.4f}")
+            data.append(row)
+        print(tabulate(data, headers=headers, tablefmt="grid"))
+        
+    except ValueError as e:
+        print(f"\nInvalid input: {e}")
+    except Exception as e:
+        print(f"\nError computing analytics: {e}")
 
 def friends_menu():
     while True:

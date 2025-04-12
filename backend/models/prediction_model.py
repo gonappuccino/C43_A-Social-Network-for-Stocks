@@ -123,7 +123,7 @@ class StockPredictionModel(BasePredictionModel):
         confidence = self._calculate_confidence(close_prices)
         
         return predicted_prices, confidence
-
+    
 class PortfolioPredictionModel(BasePredictionModel):
     """Model for predicting portfolio performance"""
     

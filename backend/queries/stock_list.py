@@ -288,7 +288,6 @@ class StockList:
         return stock_lists
 
     def compute_stock_list_value(self, user_id, stocklist_id):
-
         cursor = self.conn.cursor()
         
         # Check if user has access to this stock list
@@ -299,21 +298,29 @@ class StockList:
             
         # Calculate stock value using latest prices
         value_query = '''
-            SELECT COALESCE(SUM(sls.num_shares * sh.close), 0)
-              FROM StockListStocks sls
-              JOIN (
-                SELECT symbol, MAX(timestamp) AS max_time
-                  FROM (SELECT symbol, timestamp FROM StocksHistory 
-                          UNION 
-                        SELECT symbol, timestamp FROM DailyStockInfo) combined
-                 GROUP BY symbol
-              ) AS latest ON sls.symbol = latest.symbol
-              JOIN (SELECT symbol, timestamp, close FROM StocksHistory 
-                      UNION 
-                    SELECT symbol, timestamp, close FROM DailyStockInfo) sh 
-                ON sh.symbol = sls.symbol
-               AND sh.timestamp = latest.max_time
-             WHERE sls.stocklist_id = %s
+            WITH latest_prices AS (
+                SELECT 
+                    symbol,
+                    MAX(timestamp) as max_time
+                FROM (
+                    SELECT symbol, timestamp FROM StocksHistory
+                    UNION ALL
+                    SELECT symbol, timestamp FROM DailyStockInfo
+                ) combined
+                GROUP BY symbol
+            ),
+            current_prices AS (
+                SELECT 
+                    sh.symbol,
+                    COALESCE(sh.close, dsi.close) as close_price
+                FROM latest_prices lp
+                LEFT JOIN StocksHistory sh ON sh.symbol = lp.symbol AND sh.timestamp = lp.max_time
+                LEFT JOIN DailyStockInfo dsi ON dsi.symbol = lp.symbol AND dsi.timestamp = lp.max_time
+            )
+            SELECT COALESCE(SUM(sls.num_shares * cp.close_price), 0)
+            FROM StockListStocks sls
+            JOIN current_prices cp ON sls.symbol = cp.symbol
+            WHERE sls.stocklist_id = %s;
         '''
         cursor.execute(value_query, (stocklist_id,))
         result = cursor.fetchone()
@@ -323,7 +330,7 @@ class StockList:
         
         stock_value = d2f(result[0])
         cursor.close()
-        return stock_value 
+        return stock_value
 
     def view_stock_list_history(self, user_id, stocklist_id, period='all'):
 
@@ -505,3 +512,221 @@ class StockList:
         from models.prediction_model import StockListPredictionModel
         model = StockListPredictionModel()
         return model.predict_stock_list_value(list_data, days_to_predict) 
+
+    def compute_stock_list_analytics(self, user_id, stocklist_id, start_date=None, end_date=None):
+        cursor = self.conn.cursor()
+        
+        # Check if user has access to stock list
+        accessible_stock_lists = self.view_accessible_stock_lists(user_id)
+        if not any([lst[0] == stocklist_id for lst in accessible_stock_lists]):
+            cursor.close()
+            return None
+        
+        if not end_date and not start_date:
+            recent_date_query = '''
+                SELECT MIN(max_ts)
+                FROM (
+                    SELECT sls.symbol, MAX(combined.timestamp) as max_ts
+                    FROM StockListStocks sls
+                    JOIN (
+                        SELECT symbol, timestamp FROM DailyStockInfo
+                        UNION ALL
+                        SELECT symbol, timestamp FROM StocksHistory
+                    ) combined ON sls.symbol = combined.symbol
+                    WHERE sls.stocklist_id = %s
+                    GROUP BY sls.symbol
+                ) AS symbol_max_dates;
+            '''
+            cursor.execute(recent_date_query, (stocklist_id,))
+            latest_date = cursor.fetchone()[0]
+            if not latest_date:
+                cursor.close()
+                return None
+            
+            end_date = latest_date
+            earliest_date_query = '''
+                SELECT MIN(timestamp)
+                FROM (
+                    SELECT symbol, timestamp FROM DailyStockInfo
+                    UNION ALL
+                    SELECT symbol, timestamp FROM StocksHistory
+                ) combined
+            '''
+            cursor.execute(earliest_date_query, (stocklist_id,))
+            start_date = cursor.fetchone()[0]
+            
+        # Get all stocks in stock list
+        stocks_query = '''
+            SELECT DISTINCT symbol, num_shares
+            FROM StockListStocks
+            WHERE stocklist_id = %s
+        '''
+        cursor.execute(stocks_query, (stocklist_id,))
+        stock_list_stocks = cursor.fetchall()
+        
+        if not stock_list_stocks:
+            print("No stocks in stock list")
+            cursor.close()
+            return None
+            
+        # Check if SPY data is available for the date range
+        spy_check_query = '''
+            SELECT COUNT(*)
+            FROM (
+                SELECT timestamp
+                FROM DailyStockInfo
+                WHERE symbol = 'SPY' AND timestamp BETWEEN %s AND %s
+            ) spy_data
+        '''
+        cursor.execute(spy_check_query, (start_date, end_date))
+        spy_count = cursor.fetchone()[0]
+        
+        # If SPY data is missing, fetch it
+        if spy_count < 10:  # Require at least 10 data points for meaningful analysis
+            from queries.stock_data import StockData
+            stock_data = StockData()
+            fetched_count = stock_data.fetch_and_store_spy_info_between_dates(start_date, end_date)
+            if fetched_count is None or fetched_count == 0:
+                cursor.close()
+                print("Could not fetch SPY data")
+                return None  # Could not fetch SPY data
+
+        # Calculate daily returns, CV, and Beta for each stock
+        analytics_query = '''
+            WITH daily_returns AS (
+                SELECT 
+                    symbol,
+                    timestamp,
+                    (close - LAG(close) OVER (PARTITION BY symbol ORDER BY timestamp)) / LAG(close) OVER (PARTITION BY symbol ORDER BY timestamp) as daily_return
+                FROM (
+                    (SELECT symbol, timestamp, close
+                    FROM StocksHistory
+                    WHERE symbol IN %s AND timestamp >= %s AND timestamp <= %s)
+                    UNION ALL
+                    (SELECT symbol, timestamp, close
+                    FROM DailyStockInfo
+                    WHERE symbol IN %s AND timestamp >= %s AND timestamp <= %s)
+                ) combined
+            ),
+            spy_returns AS (
+                SELECT 
+                    timestamp,
+                    (close - LAG(close) OVER (ORDER BY timestamp)) / LAG(close) OVER (ORDER BY timestamp) as spy_return
+                FROM (
+                    SELECT timestamp, close
+                    FROM DailyStockInfo
+                    WHERE symbol = 'SPY' AND timestamp >= %s AND timestamp <= %s
+                ) spy_data
+            ),
+            stock_stats AS (
+                SELECT 
+                    dr.symbol,
+                    AVG(dr.daily_return) as mean_return,
+                    STDDEV(dr.daily_return) as std_return,
+                    (AVG(dr.daily_return * sr.spy_return) - AVG(dr.daily_return) * AVG(sr.spy_return)) as cov_with_spy,
+                    VARIANCE(sr.spy_return) as spy_variance
+                FROM daily_returns dr
+                JOIN spy_returns sr ON dr.timestamp = sr.timestamp
+                WHERE dr.daily_return IS NOT NULL AND sr.spy_return IS NOT NULL
+                GROUP BY dr.symbol
+            ),
+            correlation_matrix AS (
+                SELECT 
+                    a.symbol as symbol1,
+                    b.symbol as symbol2,
+                    (AVG(a.daily_return * b.daily_return) - AVG(a.daily_return) * AVG(b.daily_return)) / 
+                    (STDDEV(a.daily_return) * STDDEV(b.daily_return)) as correlation
+                FROM daily_returns a
+                JOIN daily_returns b ON a.timestamp = b.timestamp
+                GROUP BY a.symbol, b.symbol
+            ),
+            covariance_matrix AS (
+                SELECT 
+                    a.symbol as symbol1,
+                    b.symbol as symbol2,
+                    (AVG(a.daily_return * b.daily_return) - AVG(a.daily_return) * AVG(b.daily_return)) as covariance
+                FROM daily_returns a
+                JOIN daily_returns b ON a.timestamp = b.timestamp
+                GROUP BY a.symbol, b.symbol
+            )
+            SELECT 
+                ss.symbol,
+                ss.mean_return,
+                ss.std_return,
+                CASE 
+                    WHEN ss.mean_return = 0 THEN 0 
+                    ELSE ss.std_return / ss.mean_return 
+                END as coefficient_of_variation,
+                CASE 
+                    WHEN ss.spy_variance = 0 THEN 0 
+                    ELSE ss.cov_with_spy / ss.spy_variance 
+                END as beta,
+                cm.symbol2,
+                cm.correlation,
+                covm.symbol2 as cov_symbol2,
+                covm.covariance
+            FROM stock_stats ss
+            LEFT JOIN correlation_matrix cm ON ss.symbol = cm.symbol1
+            LEFT JOIN covariance_matrix covm ON ss.symbol = covm.symbol1
+            ORDER BY ss.symbol, cm.symbol2, covm.symbol2;
+        '''
+        
+        # Prepare parameters for the query
+        symbols = tuple(stock[0] for stock in stock_list_stocks)
+        params = (symbols, start_date, end_date, symbols, start_date, end_date,
+                 start_date, end_date)
+        
+        cursor.execute(analytics_query, params)
+        analytics_data = cursor.fetchall()
+        
+        if not analytics_data:
+            cursor.close()
+            print("No analytics data")
+            return None
+            
+        stock_analytics = []
+        correlation_matrix = {}
+        covariance_matrix = {}
+        
+        current_symbol = None
+        for row in analytics_data:
+            symbol = row[0]
+            cv = float(row[3])
+            beta = float(row[4])
+            corr_symbol2 = row[5]
+            correlation = float(row[6]) if row[6] is not None else 0
+            cov_symbol2 = row[7]
+            covariance = float(row[8]) if row[8] is not None else 0
+            
+            # Add stock analytics if we haven't seen this symbol before
+            if symbol != current_symbol:
+                current_symbol = symbol
+                stock_analytics.append({
+                    'symbol': symbol,
+                    'shares': next(stock[1] for stock in stock_list_stocks if stock[0] == symbol),
+                    'coefficient_of_variation': cv,
+                    'beta': beta
+                })
+                correlation_matrix[symbol] = {symbol: 1.0}  # Self-correlation is always 1
+                covariance_matrix[symbol] = {symbol: covariance}  # Self-covariance
+            
+            # Add correlation and covariance data if available
+            if corr_symbol2 is not None:
+                correlation_matrix[symbol][corr_symbol2] = correlation
+                if corr_symbol2 not in correlation_matrix:
+                    correlation_matrix[corr_symbol2] = {}
+                correlation_matrix[corr_symbol2][symbol] = correlation
+                correlation_matrix[corr_symbol2][corr_symbol2] = 1.0
+            
+            if cov_symbol2 is not None:
+                covariance_matrix[symbol][cov_symbol2] = covariance
+                if cov_symbol2 not in covariance_matrix:
+                    covariance_matrix[cov_symbol2] = {}
+                covariance_matrix[cov_symbol2][symbol] = covariance
+        
+        cursor.close()
+        return {
+            'stock_analytics': stock_analytics,
+            'correlation_matrix': correlation_matrix,
+            'covariance_matrix': covariance_matrix
+        } 
